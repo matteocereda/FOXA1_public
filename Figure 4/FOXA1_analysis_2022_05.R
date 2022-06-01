@@ -4,14 +4,14 @@ pr_folder = "FOXA1_reg_vs_const"
 
 # Paths ----
 
-PATH_RNAMOTIFS     = "~/RNAmotifs"
-PATH_TO_DB         = "~/mCrossPWMs"        # PWMs are stored as [cell_line].[RBP].[PWM_version].txt 
-PATH_TO_MACROAPE   = "~/Macro-ape"
-PATH_TO_PEAKS      = "~/Nobby/"
-PATH_ALL_DATASET   = '~/PRAD_dex_FOXA1_HE_ALL_ES_events_noMore500.rds'
-PATH_DEX_DATASET   = '~/dexVAR_EXON_SKIPPING_only_with_pfam_and_NMD_FOXA1_HE.rds'
-PATH_DEX_FOXA1     = "~/NEW_differentially_expressed_lists.Rdata"
-PATH_MCROSS_SCORES = "~/score_list_mCross.RData"
+PATH_RNAMOTIFS     = "../RNAmotifs"
+PATH_TO_DB         = "../Rdata/mCrossPWMs"        # PWMs are stored as [cell_line].[RBP].[PWM_version].txt 
+PATH_TO_MACROAPE   = "../Macro-ape"
+PATH_TO_PEAKS      = "../Rdata/Nobby/"
+PATH_ALL_DATASET   = '../Rdata/PRAD_dex_FOXA1_HE_ALL_ES_events_noMore500.rds'
+PATH_DEX_DATASET   = '../Rdata/dexVAR_EXON_SKIPPING_only_with_pfam_and_NMD_FOXA1_HE.rds'
+PATH_DEX_FOXA1     = "../Rdata/NEW_differentially_expressed_lists.Rdata"
+PATH_MCROSS_SCORES = "../Rdata/score_list_mCross.RData"
 
 PATH_RES_RNAMOTIFS = p(PATH_RNAMOTIFS, "/results/",pr_folder,"/")
 PATH_INP_RNAMOTIFS = p(PATH_RNAMOTIFS, "/input/",pr_folder,"_input_RNAmotifs.txt")
