@@ -88,44 +88,113 @@ changeParam = function(inIntronOld,inExonOld,inIntronNew,inExonNew){
   return(pos_adj)
 }
 
+# 
+# SEeCLIPpeaks = function(datExpr,peaks,inIntron, inExon, n_cores){
+#   # datExpr è del tipo 1;10046;chr6;+;43746655;43749692;43749824;43752277;1
+#   # peaks è del tipo chr1	17496	17498
+#   
+#   # primo return: posizioni assolute genomiche delle regioni di interesse
+#   # secondo return: matrice di 1 e 0: 1 se overlap con eclip, 0 elsewise
+#   
+#   # inExon = 58
+#   # inIntron = 208
+#   # matrice di (nrow) X (267). ogni riga va da -58 a 208
+#   m1 = matrix(rep(-inExon:inIntron,nrow(datExpr)),
+#               nrow  = nrow(datExpr),
+#               ncol  = length(-inExon:inIntron),
+#               byrow = T)
+#   
+#   m2 = matrix(rep(-inIntron:inExon,nrow(datExpr)),
+#               nrow  = nrow(datExpr),
+#               ncol  = length(-inIntron:inExon),
+#               byrow = T)
+#   
+#   pos = cbind(m1 + datExpr$V5,
+#               m2 + datExpr$V6,
+#               m1 + datExpr$V7,
+#               m2 + datExpr$V8)
+#   #library(Rmpi) 
+#   clus = snow::makeCluster(n_cores, type = "SOCK")
+#   snow::clusterExport(clus,list = c("datExpr","peaks","inIntron","inExon"))
+#   values_t = snow::parSapply(clus, 1:nrow(datExpr), function(x){
+#     
+#     m1 = matrix(rep(-inExon:inIntron,nrow(datExpr)),
+#                 nrow  = nrow(datExpr),
+#                 ncol  = length(-inExon:inIntron),
+#                 byrow = T)
+#     
+#     m2 = matrix(rep(-inIntron:inExon,nrow(datExpr)),
+#                 nrow  = nrow(datExpr),
+#                 ncol  = length(-inIntron:inExon),
+#                 byrow = T)
+#     
+#     pos = cbind(m1 + datExpr$V5,
+#                 m2 + datExpr$V6,
+#                 m1 + datExpr$V7,
+#                 m2 + datExpr$V8)
+#     
+#     tmp0 = subset(peaks, V1==datExpr$V3[x])
+#     tmp  = subset(tmp0, V2%in%pos[x,] | V3%in%pos[x,])
+#     
+#     if(nrow(tmp)==0){
+#       return(pos[x,]*0)
+#     }
+#     
+#     tmp         = do.call(rbind, lapply(1:nrow(tmp),function(y){cbind(seq(as.numeric(tmp$V2[y]),as.numeric(tmp$V3[y])),1)}))
+#     a           = tmp[match(pos[x,],tmp[,1]),2]
+#     a[is.na(a)] = 0
+#     
+#     if(datExpr$V4[x]=="-"){a = a[length(a):1]}
+#     
+#     return(a)
+#   }) 
+#   
+#   stopCluster(clus)
+#   
+#   res = list(pos = pos, values = t(values_t))
+#   
+#   return(res)
+# }
+
+
 SEeCLIPpeaks = function(datExpr,peaks,inIntron, inExon){
-  
+
   m1 = matrix(rep(-inExon:inIntron,nrow(datExpr)),
               nrow  = nrow(datExpr),
               ncol  = length(-inExon:inIntron),
               byrow = T)
-  
+
   m2 = matrix(rep(-inIntron:inExon,nrow(datExpr)),
               nrow  = nrow(datExpr),
               ncol  = length(-inIntron:inExon),
               byrow = T)
-  
+
   pos = cbind(m1 + datExpr$V5,
               m2 + datExpr$V6,
               m1 + datExpr$V7,
               m2 + datExpr$V8)
-  
+
   values_t = pbapply::pbsapply(1:nrow(datExpr),function(x){
     tmp0 = subset(peaks, V1==datExpr$V3[x])
     tmp  = subset(tmp0,V2%in%pos[x,] | V3%in%pos[x,])
-    
+
     if(nrow(tmp)==0){
       return(pos[x,]*0)
     }
-    
+
     tmp         = do.call(rbind,lapply(1:nrow(tmp),function(y){cbind(seq(num(tmp$V2[y]),num(tmp$V3[y])),1)}))
     a           = tmp[match(pos[x,],tmp[,1]),2]
     a[is.na(a)] = 0
-    
+
     if(datExpr$V4[x]=="-"){a = a[length(a):1]}
-    
+
     return(a)
   })
-  
+
   res = list(pos = pos, values = t(values_t))
-  
+
   return(res)
-  
+
 }
 
 anno_reg = function(v, col1 = "red", col2 = "blue", col3 = "yellow", h = 4){

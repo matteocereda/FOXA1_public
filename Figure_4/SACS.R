@@ -11,6 +11,8 @@ library(ggplot2)
 
 
 dexVAR_gene <- readRDS('Rdata/dexVAR_EXON_SKIPPING_only_with_pfam_and_NMD_FOXA1_HE.rds')
+FIG_DIR = '/Volumes/Prule/remove_me_Figures_FOXA1/'
+system(paste0('mkdir ', FIG_DIR))
 
 # ∞∞∞ Intersection with SACS-marked exons ----
 
@@ -81,6 +83,6 @@ df_sacs$prop = NA
 df_sacs$prop[which(df_sacs$Var2=='FOXA1_regulated')]=df_sacs$Freq[which(df_sacs$Var2=='FOXA1_regulated')]/table(es$ASE_set)[1]
 df_sacs$prop[which(df_sacs$Var2=='vASE')]=df_sacs$Freq[which(df_sacs$Var2=='vASE')]/table(es$ASE_set)[2]
 
-pdf(file="SACS_proportion.pdf", h=5, w=5, useDingbats = F)
+pdf(file=paste0(FIG_DIR, "SACS_proportion.pdf"), h=5, w=5, useDingbats = F)
 ggplot(df_sacs,aes(x=Var2,y=prop,fill=Var1))+geom_col()+theme_bw()
 dev.off()

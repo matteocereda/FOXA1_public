@@ -5,6 +5,8 @@
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PART 1 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+options(stringsAsFactors=F)
+
 message('[****] SCRIPT: Splicing_analysis_part_1.R')
 
 print('[****] SCRIPT: Splicing_analysis_part_1.R')
@@ -20,7 +22,7 @@ gene = 'FOXA1'
 
 print(paste0('STRATA: ',gene))
 
-work_dir     = 'Automatic_splicing_analysis_results/'
+work_dir     = '~/Downloads/FOXA1/Automatic_splicing_analysis_results/'
 STRATA_code  = paste0(gene,'_HE') 
 work_dir     = paste0(work_dir,STRATA_code)
 Fig_out_dir  = paste0(work_dir,'/Figures/splicing_analysis_',STRATA_code)
@@ -85,8 +87,8 @@ dex_CASE$BF     = p.adjust(dex_CASE$w, 'bonferroni', n=sum(!is.na(dex_CASE$w)))
 dex_CASE$BF.ks  = p.adjust(dex_CASE$k, 'bonferroni', n=sum(!is.na(dex_CASE$k)))
 dex_CASE$FDR    = p.adjust(dex_CASE$w, 'fdr', n=sum(!is.na(dex_CASE$w)))
 dex_CASE$FDR.ks = p.adjust(dex_CASE$k, 'fdr', n=sum(!is.na(dex_CASE$k)))
-dex_CASE_flig   = ddply(ex_CASE, .(as_id), summarise, fligner=fligner.test(list(value[type],value[!type]))$p.value, .progress = 'text')
-
+dex_CASE_flig   = ddply(ex_CASE, .(as_id), summarise, fligner=fligner.test(list(value[type],value[!type]))$p.value, .progress = 'text') # exon_skip_100196
+  
 dex_CASE        = cbind(dex_CASE,dex_CASE_flig$fligner)
 colnames(dex_CASE)[length(colnames(dex_CASE))] = 'fligner'
 

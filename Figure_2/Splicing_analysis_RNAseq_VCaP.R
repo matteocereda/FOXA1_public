@@ -15,7 +15,9 @@ library(org.Hs.eg.db)
 library(gridExtra)
 library(rtracklayer)
 
-setwd("sources/Whippet_raw_files/VCaP")
+repo = '/Volumes/Prule/repo/FOXA1_public/'
+FIG_DIR = '~/Downloads/FOXA1/Figure2/'
+setwd(paste0(repo, "sources/Whippet_raw_files/VCaP"))
 
 
 anno=readRDS('../../../Rdata/gencode.v28.annotation.rds')
@@ -210,7 +212,7 @@ library(gridExtra)
 library(rtracklayer)
 library(ggExtra)
 
-setwd("code")
+setwd(repo)
 
 delta=readRDS("Rdata/Whippet_VCAP_filter_0_2.rds")
 
@@ -232,7 +234,7 @@ stats=as.data.frame(table(prova_sign$Type))
 stats$distr="events"
 
 
-pdf(file='piechart_event_types_STRINGENT.pdf', paper = 'a4', useDingbats = F)
+pdf(file=paste0(FIG_DIR, 'piechart_event_types_STRINGENT.pdf'), paper = 'a4', useDingbats = F)
 
 ggplot(stats, aes(x = distr, y = Freq, fill =Var1)) +theme_bw()+
   geom_bar(stat="identity", width = 0.7)+theme(axis.text.x = element_text(angle = 90, hjust = 1))+geom_text(aes(label=Freq),position = position_stack(0.6) )+
@@ -255,12 +257,12 @@ dev.off()
 prova_sign$overall.mean = (prova_sign$Psi_A+prova_sign$Psi_B)/2
 prova_sign$class_delta = '<0'
 prova_sign$class_delta[which(sign(prova_sign$DeltaPsi)>0)] = '>0' 
-pdf(file='histogram_colored_DeltaPsi_CIwidth_less_02_STRINGENT.pdf', height = unit(3,'cm'), width = unit(5.5,'cm'), useDingbats = F )
+pdf(file=paste0(FIG_DIR, 'histogram_colored_DeltaPsi_CIwidth_less_02_STRINGENT.pdf'), height = unit(3,'cm'), width = unit(5.5,'cm'), useDingbats = F )
 ggplot(prova_sign,aes(x=overall.mean,color=class_delta))+geom_histogram(alpha=0, position="identity", bins=50)+theme_classic() +
   scale_color_manual(values=c(rgb(18/255,0,124/255),rgb(223/255,0,63/255)))
 dev.off()
 
-pdf(file='histogram_deltaPSI_single_event_types_STRINGENT.pdf', height = unit(8,'cm'), width = unit(6,'cm'), useDingbats = F )
+pdf(file=paste0(FIG_DIR, 'histogram_deltaPSI_single_event_types_STRINGENT.pdf'), height = unit(8,'cm'), width = unit(6,'cm'), useDingbats = F )
 ggplot(prova_sign,aes(x=overall.mean,color=class_delta))+geom_histogram(alpha=0, position="identity", bins=50)+theme_classic() +
   scale_color_manual(values=c(rgb(18/255,0,124/255),rgb(223/255,0,63/255))) + facet_wrap(~ Type, ncol=2)
 dev.off()

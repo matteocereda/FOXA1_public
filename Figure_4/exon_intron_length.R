@@ -1,6 +1,8 @@
 # ••••••••••••••••••••••••••••••••••••••••• ----
 # *** Exon-intron length ----
 
+FIG_DIR = '/Volumes/Prule/remove_me_Figures_FOXA1/'
+system(paste0('mkdir ', FIG_DIR))
 
 es = readRDS('Rdata/dexVAR_EXON_SKIPPING_only_with_pfam_and_NMD_FOXA1_HE.rds')
 
@@ -26,6 +28,6 @@ es$ASE_set[which(es$FOXA1_sign)] = 'FOXA1_regulated'
 to_plot=reshape2::melt(es[,63:66])
 to_plot$variable=factor(to_plot$variable,levels = c('iu.length','e.length','id.length'))
 
-pdf(file="exon_intron_length_boxplots.pdf", h=8, w=8, useDingbats = F)
+pdf(file=paste0(FIG_DIR, "exon_intron_length_boxplots.pdf"), h=8, w=8, useDingbats = F)
 ggplot(to_plot,aes(x=ASE_set,fill=ASE_set,y= log10(value)))+geom_boxplot(notch = T)+stat_compare_means()+theme_bw()+facet_wrap(~variable)
 dev.off()

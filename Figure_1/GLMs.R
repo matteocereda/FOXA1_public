@@ -1,6 +1,6 @@
 # ••••••••••••••••••••••••••••••••••••••••• ----
 # *** GLMs to model cumulative SRGs expression as a function of the expression of FOXA1, AR, MYC and ERG ----
-
+options(stringsAsFactors = F)
 library(plyr)
 library(reshape2)
 library(maditr)
@@ -10,7 +10,8 @@ library(ggpubr)
 library(gridExtra)
 
 
-FIGURE_DIR = # set figure directory
+#FIGURE_DIR = # set figure directory
+
 
 pl = readRDS("Rdata/KEGG_Genetic_information_process.GSECA.200105.rds")
 
@@ -65,9 +66,12 @@ set.seed(30580)
 pdf(file=paste0(FIGURE_DIR, "SRP_TF_primary_glm_coeff_NEW.pdf"), height=unit(3,'cm'), width=unit(3, 'cm'), useDingbats = F )
 fit.p = glm(data=x, SRP~FOXA1+MYC+AR+ERG ); coe1 = get_coef(fit.p)
 dev.off()
+
 pdf(file=paste0(FIGURE_DIR, "SRP_TF_metastatic_glm_coeff.pdf"), height=unit(3,'cm'), width=unit(3, 'cm'), useDingbats = F )
 fit.m = glm(data=y, SRP~FOXA1+MYC+AR+ERG ); coe2 = get_coef(fit.m)
 dev.off()
+
+
 pdf(file=paste0(FIGURE_DIR, "SRP_TF_neuroendocrine_glm_coeff__NO_HOXB13.pdf"), height=unit(3,'cm'), width=unit(3, 'cm'), useDingbats = F )
 fit.n = glm(data=z, SRP~FOXA1+MYC+AR+ERG ); coe3 = get_coef(fit.n)
 dev.off()

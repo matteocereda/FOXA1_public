@@ -15,7 +15,7 @@ gene = 'FOXA1'
 
 print(paste0('STRATA: ',gene))
 
-work_dir     = 'Automatic_splicing_analysis_results'
+work_dir     = '~/Downloads/FOXA1/Automatic_splicing_analysis_results/'
 STRATA_code  = paste0(gene,'_HE') 
 work_dir     = paste0(work_dir,STRATA_code)
 Fig_out_dir  = paste0(work_dir,'/Figures/splicing_analysis_',STRATA_code)
@@ -26,8 +26,9 @@ Data_out_dir = paste0(work_dir,'/Rdata/splicing_analysis_',STRATA_code)
 get_wk_test <- function(x){ 
   w = with(x, wilcox.test(value[type], value[!type])$p.value)
   k = with(x, ks.test(    value[type], value[!type])$p.value)
-  f = with(x, fligner.test(list(value[type],value[!type]))$p.value)
-  return( c('w'=w,'k'=k,'f'=f) )
+  # f = with(x, fligner.test(list(value[type],value[!type]))$p.value)
+  f = tryCatch( with(x, fligner.test(list(value[type],value[!type]))$p.value) , error = function(e) return(1))
+  return( c('w'=w,'k'=k,'f'= f ) )
 }
 
 
@@ -62,14 +63,14 @@ patients = unique(tmp)
 
 message('[*] Variables loaded, start bootstrapping ...')
 
-# P.EMPIRICAL and Sample Size ==========
-
-#********************
+# # P.EMPIRICAL and Sample Size ==========
+# 
+# #********************
 set.seed(30580)
-NCORES = 4
+NCORES = 28
 NSIM   = 1000
-#********************
-
+# #********************
+# 
 samples <- 1:NSIM
 samples <- lapply(samples, function(x,y){ y$type=sample(y$type); return(y) } , y=patients )
 

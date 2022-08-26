@@ -32,13 +32,17 @@ get_enrich=function(x
   list('id'=ids, 'go'=ego)
 }
 
+repo = '/Volumes/Prule/repo/FOXA1_public/'
+FIG_DIR = '~/Downloads/FOXA1/Figure2/'
+setwd(repo)
+
 vcap = readRDS('Rdata/Whippet_VCAP_filter_0_2.rds')
 vcap = subset(vcap,!Type%in%c('TE','TS'))
 vcap$STRINGENT = F
 vcap$STRINGENT[which(abs(vcap$DeltaPsi)>0.05 & vcap$Probability>0.9 & !vcap$Complexity=='K0')] = T
 vcap$Type[which(vcap$Type=='AF')] = 'AA'
 vcap$Type[which(vcap$Type=='AL')] = 'AD'
-
+vcap$ensembl = sapply(strsplit(vcap$Gene, '\\.'),'[[',1)
 
 pc3 = readRDS('Rdata/Whippet_PC3_nextseq_novaseq_filter_0_2.rds')
 pc3 = subset(pc3,!Type%in%c('TE','TS'))
@@ -46,16 +50,18 @@ pc3$STRINGENT = F
 pc3$STRINGENT[which(abs(pc3$DeltaPsi)>0.05 & pc3$Probability>0.9 & !pc3$Complexity=='K0')] = T
 pc3$Type[which(pc3$Type=='AF')] = 'AA'
 pc3$Type[which(pc3$Type=='AL')] = 'AD'
+pc3$ensembl = sapply(strsplit(pc3$Gene, '\\.'),'[[',1)
 
 vcap$cell='VCaP'
 pc3$cell='PC3'
 
-cls = c('cell','ensembl','Type','STRINGENT','SENSITIVE')
+cls = c('cell','ensembl','Type','STRINGENT')
 ase = rbind.data.frame(pc3[,cls],vcap[,cls])
-ase_p = subset(ase, SENSITIVE); ase_p = ase_p[,1:3]; ase_p=unique(ase_p); ase_p$set='permissive'
+# ase_p = subset(ase, SENSITIVE); ase_p = ase_p[,1:3]; ase_p=unique(ase_p); ase_p$set='permissive'
 ase_s = subset(ase, STRINGENT); ase_s = ase_s[,1:3]; ase_s=unique(ase_s); ase_s$set='stringent'
 
-ase = rbind.data.frame(ase_p, ase_s)
+ase = ase_s
+# ase = rbind.data.frame(ase_p, ase_s)
 
 
 
@@ -88,7 +94,7 @@ tmp2 = ddply(to_plot2,.(ID),summarise,mean_padj=mean(p.adjust),mean_GR=mean(pars
 tmp2 = tmp2[order(tmp2$mean_GR,decreasing = T),]
 to_plot2$ID = factor(to_plot2$ID, levels = rev(tmp2$ID))
 
-pdf(file = paste0('ORA_single_event_types_Cells_KEGG_186.pdf'), height=unit(8,'cm'), width=unit(22,'cm') ,useDingbats = F)
+pdf(file = paste0(FIG_DIR, 'ORA_single_event_types_Cells_KEGG_186.pdf'), height=unit(8,'cm'), width=unit(22,'cm') ,useDingbats = F)
 to_plot2=subset(to_plot2,p.adjust<0.25)
 ggplot( to_plot2,
            aes(x= parse_ratio(GeneRatio), y= ID)) + 
@@ -133,7 +139,7 @@ tmp2 = ddply(to_plot2,.(ID),summarise,mean_padj=mean(p.adjust),mean_GR=mean(pars
 tmp2 = tmp2[order(tmp2$mean_GR,decreasing = T),]
 to_plot2$ID = factor(to_plot2$ID, levels = rev(tmp2$ID))
 
-pdf(file='ORA_all_event_types_Cells_KEGG_186.pdf', height = unit(8,'cm'), width = unit(22, 'cm'), useDingbats = F)
+pdf(file=paste0(FIG_DIR, 'ORA_all_event_types_Cells_KEGG_186.pdf'), height = unit(8,'cm'), width = unit(22, 'cm'), useDingbats = F)
 to_plot2=subset(to_plot2,p.adjust<0.1)
 ggplot( to_plot2,
            aes(x= parse_ratio(GeneRatio), y= ID)) + 
@@ -149,7 +155,7 @@ ggplot( to_plot2,
 dev.off()
 
 
-pdf(file='ORA_all_event_types_Cells_KEGG_186__richFactor.pdf', height = unit(4,'cm'), width = unit(8, 'cm'), useDingbats = F)
+pdf(file=paste0(FIG_DIR, 'ORA_all_event_types_Cells_KEGG_186__richFactor.pdf'), height = unit(4,'cm'), width = unit(8, 'cm'), useDingbats = F)
 to_plot2=subset(to_plot2,p.adjust<0.1)
 ggplot( to_plot2,
         aes(x= richFactor, y= ID)) + 

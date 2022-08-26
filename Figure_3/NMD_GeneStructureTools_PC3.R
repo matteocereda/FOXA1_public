@@ -6,9 +6,11 @@ library(BSgenome.Hsapiens.UCSC.hg19)
 library(Gviz)
 library(rtracklayer)
 
+repo = '/Volumes/Prule/repo/FOXA1_public/'
+setwd(repo)
 
 # list of files in the whippet directory
-whippet_file_directory <- "DIR_WITH_WHIPPET_DATA"
+whippet_file_directory <- "sources/Whippet_raw_files/PC3/"
 
 # read in files as a whippetDataSet
 wds <- readWhippetDataSet(whippet_file_directory)
@@ -28,6 +30,8 @@ wds@diffSplicingResults = tmp
 message('[*] Reading gtf ...')
 
 # read in gtf annotation
+system(paste0('wget https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_28/GRCh37_mapping/gencode.v28lift37.annotation.gtf.gz'))
+system('gunzip gencode.v28lift37.annotation.gtf.gz')
 gtf <- rtracklayer::import("gencode.v28lift37.annotation.gtf")
 chromosomes = c('chr1','chr10','chr11','chr12' ,'chr13','chr14','chr15','chr16','chr17','chr18','chr19','chr2','chr20','chr21','chr22','chr3','chr4','chr5','chr6','chr7','chr8','chr9','chrX','chrY')
 gtf = gtf[seqnames(gtf)%in%chromosomes]
@@ -37,6 +41,9 @@ gtf2$seqnames=factor(gtf2$seqnames)
 gtf2=makeGRangesFromDataFrame(gtf2,keep.extra.columns=T)
 exons <- gtf2[gtf2$type=="exon"]
 transcripts <- gtf2[gtf2$type=="transcript"]
+
+system('rm gencode.v28lift37.annotation.gtf')
+
 
 # add first/last annotation (speeds up later steps)
 if(!("first_last" %in% colnames(mcols(exons)))){
@@ -71,7 +78,8 @@ wds.ce <- filterWhippetEvents(wds2, eventTypes = 'CE', psiDelta=0,probability=0)
 # find exons in the gtf that overlap the skipped exon event
 exons.ce <- findExonContainingTranscripts(wds.ce, 
                                           exons = exons,
-                                          transcripts = transcripts)
+                                          transcripts = transcripts
+                                          )
 
 # make skipped and included exon transcripts
 # removes the skipped exon from all transcripts which contain it
@@ -142,3 +150,5 @@ orfChange <- cbind(orfChange, nmdChange[m,-1])
 orfChange$delta_nmd_prob = orfChange$nmd_prob_bygroup_x - orfChange$nmd_prob_bygroup_y
 
 save(orfChange,nmdChange,orfs_normal,orfs_skipped,orfs_included,file='Rdata/NMD_analysis_GeneStructureTools_PC3.Rdata')
+
+

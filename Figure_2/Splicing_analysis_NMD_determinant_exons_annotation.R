@@ -8,11 +8,14 @@ print('[****] SCRIPT: Splicing_analysis_NMD_determinant_exons_annotations.R')
 
 message('[*] Setting working path and creating directories ...')
 
+repo = '/Volumes/Prule/repo/FOXA1_public/'
+setwd(repo)
+
 gene = 'FOXA1'
 
 print(paste0('STRATA: ',gene))
 
-work_dir     = 'Automatic_splicing_analysis_results'
+work_dir     ='~/Downloads/FOXA1/Automatic_splicing_analysis_results/'
 STRATA_code  = paste0(gene,'_HE') # 'PTEN_loss'
 work_dir     = paste0(work_dir,STRATA_code)
 Fig_out_dir  = paste0(work_dir,'/Figures/splicing_analysis_',STRATA_code)
@@ -37,6 +40,7 @@ message('[*] Annotating dexSIGN_ES with NMD...')
 whole_coord_EXONS_unique <- readRDS("Rdata/whole_coord_EXONS_unique.rds")
 
 dexSIGN_ES <- readRDS(paste0(Data_out_dir,'/dexSIGN_EXON_SKIPPING_only_',STRATA_code,'.rds'))
+# dexSIGN_ES <- readRDS(paste0(repo, 'Rdata/dexSIGN_EXON_SKIPPING_only_with_pfam_and_NMD_FOXA1_HE.rds'))
 
 
 dexSIGN_ES$strand = whole_coord_EXONS_unique$strand[match(dexSIGN_ES$gene_id,whole_coord_EXONS_unique$GeneName)]
@@ -70,6 +74,7 @@ dexSIGN_ES$ESSENTIAL[which(dexSIGN_ES$event_id%in%signES_essential$V4)]=T
 message('[*] Annotating dexVAR_ES with NMD...')
 
 dexVAR_ES <- readRDS(paste0(Data_out_dir,'/dexVAR_EXON_SKIPPING_only_',STRATA_code,'.rds'))
+# dexVAR_ES <- readRDS(paste0(repo, 'Rdata/dexVAR_EXON_SKIPPING_only_with_pfam_and_NMD_FOXA1_HE.rds'))
 
 whole_coord_EXONS_unique <- readRDS("Rdata/whole_coord_EXONS_unique.rds")
 
@@ -118,6 +123,7 @@ totest[1,1]/sum(totest[,1])
 totest[1,2]/sum(totest[,2])
 pval_towrite=fisher.test(totest)$p.val
 ypval=max(totest[1,1]/sum(totest[,1]),totest[1,2]/sum(totest[,2]))
+
 pdf(file=paste0(Fig_out_dir,'/barplot_POISON_SIGN_and_VAR_',STRATA_code,'.pdf'), width = 4, height = 5, useDingbats = F)
 barplot(c('svES events'=totest[1,1]/sum(totest[,1]),'varES events'=totest[1,2]/sum(totest[,2])),ylim = c(0,(ypval+0.05)))
 text(1.2,ypval,as.character(round(pval_towrite,4)),pos=3,col = 'red')

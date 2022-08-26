@@ -10,13 +10,14 @@ library(ggpubr)
 
 ex = readRDS('Rdata/variable_exons_with_splice_sites_strength_annotation.rds')
 
-es = ex %>% subset(event_type=='ES') %>% # &
-  select(gene_id, event_id, delta.mean, overall.mean, overall.sd, exon_type, FOXA1_sign,
-         pois_ess, 
-         upstream_5ss_donor_motif_STRENGTH, upstream_3ss_acceptor_motif_STRENGTH,
-         downstream_5ss_donor_motif_STRENGTH, downstream_3ss_acceptor_motif_STRENGTH
-         ,exon_length, intron_length) %>% 
-  reshape2::melt(measure.vars=c('upstream_5ss_donor_motif_STRENGTH', 'upstream_3ss_acceptor_motif_STRENGTH',
+es = ex %>% subset(event_type=='ES')
+es=es[, c("gene_id", "event_id", "delta.mean", "overall.mean", "overall.sd", "exon_type", "FOXA1_sign",
+          "pois_ess", 
+          "upstream_5ss_donor_motif_STRENGTH", "upstream_3ss_acceptor_motif_STRENGTH",
+          "downstream_5ss_donor_motif_STRENGTH", "downstream_3ss_acceptor_motif_STRENGTH"
+          ,"exon_length", "intron_length")]
+
+es=reshape2::melt(es, measure.vars=c('upstream_5ss_donor_motif_STRENGTH', 'upstream_3ss_acceptor_motif_STRENGTH',
                                 'downstream_5ss_donor_motif_STRENGTH', 'downstream_3ss_acceptor_motif_STRENGTH'))
 es$variable = sub('_motif_STRENGTH','', es$variable)
 es$variable = sub('_donor|_acceptor','', es$variable)

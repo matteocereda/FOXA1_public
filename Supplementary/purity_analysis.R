@@ -2,16 +2,135 @@
 # *** Analysis of the impact of tumor purity on FOXA1 regulation of SRGs and splicing ----
 
 
-# ******************** ----
-# ******************** TUMOR PURITY ----
-# ******************** ----
-
+# Options and libraries ========
+options(stringsAsFactors=F)
+ 
 library(readxl)
 library(ggplot2)
 library(plyr)
 library(ggpubr)
 library(reshape2)
 library(gridExtra)
+library(caret)
+library(relaimpo)
+library(TCGAbiolinks)
+library(SummarizedExperiment)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(UpSetR)
+library(gtools)
+library(R.utils)
+library(gridExtra)
+library(DOSE)
+library(igraph)
+library(org.Hs.eg.db)
+library(tidyverse)
+library(magrittr)
+library(clusterProfiler)
+library(msigdbr)
+library(ggplotify)
+
+
+setwd("")
+
+FIG_DIR=""   # define folder
+
+# Function =========
+
+get_coef = function(f){
+  coe = coef(f); coe  = coe[-1]; coe = sort(coe)
+  pvalue = coef(summary(f))[,4]
+  coe = data.frame(g = names(coe), coe = coe, pval = pvalue[names(coe)])
+  coe$g = factor(coe$g, levels = coe$g)
+  coe$pval[coe$pval>0.05] = 1
+  print(ggplot(coe, aes(x=g, y=coe, fill = coe, size=pval<0.05) )+
+          geom_bar(stat='identity',color='black')+theme_bw()+coord_flip()+scale_fill_gradientn(limits=c(0,0.5),colours = c('white','red'))+#scale_fill_gradient2(midpoint=0, low="blue", mid="white", high="red")+
+          scale_size_manual(values = c(0,1)))
+  coe
+}
+
+get_DESEQ = function(counts, samples, cond, ctrl){ 
+  
+  # Perform DESeq analysis
+  require(DESeq2)
+  require(BiocParallel)
+  
+  tmp=counts[,samples]
+  colData <- data.frame(condition=factor(cond))
+  colData$condition <- relevel(colData$condition, ref = ctrl) 
+  dds <- DESeqDataSetFromMatrix(tmp, colData, formula(~condition))
+  # mcols(dds)$basepairs=tlen
+  dds <- dds[ rowSums(counts(dds)) > 1, ]
+  dds <- DESeq(dds, parallel = T, BPPARAM = MulticoreParam(workers = 2))
+  # dds <- DESeq(dds, parallel = F)
+  res <- results(dds)
+  res
+  
+}
+
+
+
+simulazione=function(samples, ri, pl){
+  ri$type="WT"
+  ri$type[which(ri$sample%in%samples)]="HE"
+  x = subset(ri, symbol %in% pl)
+  t1 = ddply(x, .(symbol),
+             summarise,
+             ks=ks.test(TPM[type=="HE"], TPM[type=="WT"], alternative = 'two.sided' )$p.value # %%%%%%%%%%%%%%%%%%%%%% CAMBIATO
+  )
+  t1$BF.ks = p.adjust(t1$ks, 'bonferroni', n=sum(!is.na(t1$ks)))
+  
+  return(t1[,c('symbol','ks','BF.ks')])
+}
+
+
+get_wk_test <- function(x){ 
+  w = with(x, wilcox.test(value[type], value[!type])$p.value)
+  k = with(x, ks.test(    value[type], value[!type])$p.value)
+  f = with(x, if(length(table(value))>1) { fligner.test(list(value[type],value[!type]))$p.value } else  {NA})
+  return( c('w'=w,'k'=k,'f'=f) ) # c('w'=w,'k'=k,'f'=f)
+}
+
+
+execute_bootstrap <- function(samples, data, type='sample.size'){
+  require(plyr)
+  if(type=='p.empirical'){
+    data$type <- samples$type[match(as.character(data$variable), as.character(samples$variable)) ]
+  }else if(type=='sample.size'){
+    data <- subset(data, as.character(variable)%in%samples)
+  }
+  rx  = ddply(data, .(as_id), get_wk_test)
+  return(rx)
+}
+
+
+
+format_enrichr = function(x,  org=org.Hs.eg.db, key="ENTREZID"){
+  y <- setReadable(x, OrgDb = org, keyType=key)
+  y <- clusterProfiler::mutate(y, richFactor = Count / as.numeric(sub("/\\d+", "", BgRatio)))
+  y <- clusterProfiler::mutate(y, FoldEnrichment = parse_ratio(GeneRatio) / parse_ratio(BgRatio))
+  y
+}
+
+get_enrich=function(x
+                    , TERM2GENE,  pAdjustMethod = "BH", pvalueCutoff=1, qvalueCutoff=1, minGSSize = 10
+                    ,fromType="ENSEMBL", toType=c("UNIPROT", "SYMBOL", 'ENTREZID','ALIAS'), OrgDb="org.Hs.eg.db",typeFormat='ENTREZID'){
+  ids <- bitr(unique(x$ensembl), fromType=fromType, toType=toType, OrgDb=OrgDb)
+  ego <- enricher(unique(ids$ENTREZID)  #, universe = unique(bg$ENTREZID)
+                  , TERM2GENE = TERM2GENE
+                  , pAdjustMethod = pAdjustMethod
+                  , pvalueCutoff=pvalueCutoff
+                  , qvalueCutoff=qvalueCutoff
+                  , minGSSize = minGSSize )
+  ego = format_enrichr(ego, org=OrgDb, key=typeFormat)
+  list('id'=ids, 'go'=ego)
+}
+
+
+
+# 1. ASSIGN PATIENTS TO A TUMOR PURITY CATEGORY ----
+
+
 
 purity=read_xlsx('Tables/Aran_Nat_Comm_2015/41467_2015_BFncomms9971_MOESM1236_ESM.xlsx',skip = 3)
 purity=subset(purity,`Cancer type`=='PRAD')
@@ -24,69 +143,80 @@ purity=subset(purity,`Sample ID`%in%unique(rna$Sample_ID))
 rna$purity=purity$CPE[match(rna$Sample_ID,purity$`Sample ID`)]
 rna$purity=as.numeric(rna$purity)
 
-tmp=subset(rna,symbol=='FOXA1')
-pdf(file = 'TCGA_sample_purity_vs_FOXA1_boxplots.pdf',width = unit(3,'cm'),height = unit(4,'cm'))
-ggplot(tmp,aes(x=FOXA1_overexpression,y=purity))+theme_bw()+geom_boxplot(notch = T)+stat_compare_means()
-dev.off()
-
 
 rna$purity_strata='low'
 rna$purity_strata[which(rna$purity>=0.9)]='high'
 
 tmp=subset(rna,symbol=='FOXA1')
+tmp=subset(rna,symbol=='FOXA1' & purity_strata=='high')
+qt=quantile(tmp$TPM)
+tmp$FOXA1_overexpression=F
+tmp$FOXA1_overexpression[which(tmp$TPM>=qt['75%'])]=T
+
+tmp2=subset(rna,symbol=='FOXA1' & purity_strata=='low')
+qt=quantile(tmp2$TPM)
+tmp2$FOXA1_overexpression=F
+tmp2$FOXA1_overexpression[which(tmp2$TPM>=qt['75%'])]=T
+
+tmp=rbind(tmp,tmp2)
+
+pdf(paste0(FIG_DIR, file ='TCGA_sample_purity_vs_FOXA1_boxplots.pdf'),width = unit(3,'cm'),height = unit(4,'cm'))
+ggplot(tmp,aes(x=FOXA1_overexpression,y=purity))+theme_bw()+geom_boxplot(notch = T)+stat_compare_means()
+dev.off()
+
+rna$FOXA1_overexpression=F
+rna$FOXA1_overexpression=tmp$FOXA1_overexpression[match(rna$Tumor_Sample_Barcode,tmp$Tumor_Sample_Barcode)]
+
+
 p1=ggplot(tmp,aes(x=FOXA1_overexpression,y=purity))+theme_bw()+geom_boxplot(notch = T)+stat_compare_means()
 p2=ggplot(tmp,aes(x=TPM,y=purity))+theme_bw()+geom_point()+geom_smooth(method = 'lm')+stat_cor(label.x = 300, label.y = 1.05)+xlab('FOXA1 (TPM)')
 
 p3=ggplot(tmp,aes(x=purity_strata,y=TPM))+theme_bw()+geom_boxplot(notch = T)+stat_compare_means()+ylab('FOXA1 (TPM)')
 p4=ggplot(tmp,aes(x=purity_strata,fill=FOXA1_overexpression))+theme_bw()+geom_bar()
 
-pdf(file = 'TCGA_sample_purity_characterization__NEW_STRATA.pdf',width = unit(12,'cm'),height = unit(12,'cm'))
+pdf(paste0(FIG_DIR, file = 'TCGA_sample_purity_characterization__NEW_STRATA.pdf'),width = unit(12,'cm'),height = unit(12,'cm'))
 grid.arrange(p1,p2,p3,p4)
 dev.off()
 
 
-pdf(file = 'TCGA_FOXA1_expr_wrt_sample_purity.pdf',width = unit(4,'cm'),height = unit(5,'cm'))
+
+pdf(paste0(FIG_DIR, file = 'TCGA_FOXA1_expr_wrt_sample_purity.pdf'),width = unit(4,'cm'),height = unit(5,'cm'))
 ggplot(tmp,aes(x=purity_strata,fill=FOXA1_overexpression,y=TPM))+geom_boxplot(notch = T)+theme_bw()
 dev.off()
 
+saveRDS(rna, "Rdata/RNA_TPM_tumor.rds")
+
+# 2. GLM ----
+
+pl = readRDS("Rdata/KEGG_Genetic_information_process.GSECA.200105.rds")
+
+rna=readRDS( "Rdata/RNA_TPM_tumor.rds")
 
 
-# GLM ----
+lista=c('low', 'high')
 
-pl = readRDS("/Volumes/LaCie/FOXA1_repo/FOXA1/Rdata/KEGG_Genetic_information_process.GSECA.200105.rds")
 
-for(i in c('high','low')) {
+for(purity_stratification in lista){
   
-  rna_sub=subset(rna,purity_strata==i)
+  print(purity_stratification)
+  
+  rna_sub=subset(rna,purity_strata==purity_stratification)
   
   srp.p = ddply(subset(rna_sub, symbol%in%pl$SPLICING_RELATED), .(sample),summarise, tpm = sum(TPM))
   
   p = dcast(subset(rna_sub, symbol %in%c("FOXA1",'AR',"ERG","MYC")), sample~symbol, value.var = 'TPM')
   
-  library(caret)
+  
   p$SRP = srp.p$tpm[match(p$sample,srp.p$sample)]
   rownames(p) = p$sample; p = p[,-1]
   
   x   = predict(preProcess(p, method = c("center", "scale", "YeoJohnson", "nzv"))
                 , newdata = p)
   
-  library(relaimpo)
-  
-  get_coef = function(f){
-    coe = coef(f); coe  = coe[-1]; coe = sort(coe)
-    pvalue = coef(summary(f))[,4]
-    coe = data.frame(g = names(coe), coe = coe, pval = pvalue[names(coe)])
-    coe$g = factor(coe$g, levels = coe$g)
-    coe$pval[coe$pval>0.05] = 1
-    print(ggplot(coe, aes(x=g, y=coe, fill = coe, size=pval<0.05) )+
-            geom_bar(stat='identity',color='black')+theme_bw()+coord_flip()+scale_fill_gradientn(limits=c(0,0.5),colours = c('white','red'))+#scale_fill_gradient2(midpoint=0, low="blue", mid="white", high="red")+
-            scale_size_manual(values = c(0,1)))
-    coe
-  }
   
   set.seed(30580)
   
-  pdf(file=paste0("SRP_TF_primary_glm_coeff__purity_strata_",i,".pdf"), height=unit(3,'cm'), width=unit(3, 'cm'), useDingbats = F )
+  pdf(file=paste0(FIG_DIR,"SRP_TF_primary_glm_coeff__purity_strata_",purity_stratification,".pdf"), height=unit(3,'cm'), width=unit(3, 'cm'), useDingbats = F )
   fit.p = glm(data=x, SRP~FOXA1+MYC+AR+ERG ); coe1 = get_coef(fit.p)
   dev.off()
   
@@ -94,56 +224,33 @@ for(i in c('high','low')) {
   boot <- boot.relimp(fit.p, b = 1000, type = c("lmg"), rank = TRUE, diff = TRUE, rela = TRUE)
   b = booteval.relimp(boot,sort=TRUE) # print result
   
-  pdf(file=paste0("RelImpo_glm_primary__purity_strata_",i,".pdf"), height=unit(5,'cm'), width=unit(5,'cm'), useDingbats = F)
+  pdf(file=paste0(FIG_DIR, "RelImpo_glm_primary__purity_strata_",purity_stratification,".pdf"), height=unit(5,'cm'), width=unit(5,'cm'), useDingbats = F)
   plot(b)
   dev.off()
 }
 
 
-# DIFFERENTIAL EXPRESSION ----
+# 3. DIFFERENTIAL EXPRESSION ----
 
 source("sources/config.R")
 
-# ∞∞∞ EDGR ======================
+rna=readRDS("Rdata/RNA_TPM_tumor.rds")
 
-purity_stratification='low'
+lista=c('low', 'high')
+
+
+for(purity_stratification in lista){
+  
+print(purity_stratification)
 
 load("Rdata/PRAD.Rdata")
+
 load("Rdata/KEGG_list.148.SPLICING_RELATED.Rdata") 
+
+# ∞∞∞ EDGER ======================
 
 r2 = subset(rna,purity_strata==purity_stratification)
 
-library(TCGAbiolinks)
-library(SummarizedExperiment)
-
-# query <- GDCquery(project = "TCGA-PRAD",
-#                   data.category = "Gene expression",
-#                   data.type = "Gene expression quantification",
-#                   experimental.strategy = "RNA-Seq",
-#                   platform = "Illumina HiSeq",
-#                   file.type = "results",
-#                   barcode = unique(rna$Tumor_Sample_Barcode),
-#                   legacy = TRUE)
-# # GDCdownload(query)
-# prad <- GDCprepare(query,save = TRUE, save.filename = "Rdata/PRAD.Rdata")
-
-
-# For gene expression if you need to see a boxplot correlation and AAIC plot to define outliers you can run
-# corOutliers <- TCGAanalyze_Preprocessing(prad,
-#                                          cor.cut = 0.5,
-#                                          filename = "Prostate/Figures/PRAD_corOutlier.png", height = 1000, width = 5000)
-
-
-# normalization of genes
-# load("~/UV2/epigenetics/DB/GENCODE/v26/tlen.gencode.v26.human.Rdata")
-# a=sapply(strsplit(rownames(rc),"\\|"),"[[",1)
-# b=sapply(strsplit(rownames(rc),"\\|"),"[[",2)
-# d=unique(data.frame(symbol=a, entrez=b))
-# ix = which(d$symbol=="?")
-# d$symbol[ix]=d$entrez[ix]
-# d = cbind(d, geneInfo[match(d$symbol,rownames(geneInfo)),])
-# tlen=d
-# save(tlen, file='~/UV2/epigenetics/DB/hg19/tcgabiolinks_gene_length_gc_content.Rdata')
 
 rc <- assay(data, "raw_count")
 rc.norm <- TCGAanalyze_Normalization(tabDF = rc, geneInfo =  TCGAbiolinks::geneInfo)
@@ -193,35 +300,10 @@ save(rc.norm, rc.norm.filt, dataDEGs, file=paste0("Rdata/PRAD_EDGR_FOXA1_75th__p
 
 # ∞∞∞ DESEQ ======================
 
-get_DESEQ = function(counts, samples, cond, ctrl){ 
-  
-  # Perform DESeq analysis
-  require(DESeq2)
-  require(BiocParallel)
-  
-  tmp=counts[,samples]
-  colData <- data.frame(condition=factor(cond))
-  colData$condition <- relevel(colData$condition, ref = ctrl) 
-  dds <- DESeqDataSetFromMatrix(tmp, colData, formula(~condition))
-  # mcols(dds)$basepairs=tlen
-  dds <- dds[ rowSums(counts(dds)) > 1, ]
-  dds <- DESeq(dds, parallel = T, BPPARAM = MulticoreParam(workers = 2))
-  # dds <- DESeq(dds, parallel = F)
-  res <- results(dds)
-  res
-  
-}
-
-
-
-# 1. Load and prepare PRAD raw counts ====
-
-library(TCGAbiolinks)
-ttt=load('Rdata_old/PRAD.Rdata')
+load('Rdata/PRAD.Rdata')
 prad=assays(data)$raw_count
 
-library(reshape2)
-prad <- melt(prad)
+prad <- reshape2::melt(prad)
 colnames(prad) <- c("symbol","Tumor_Sample_Barcode","value")
 prad$symbol=as.character(prad$symbol)
 prad$Tumor_Sample_Barcode=as.character(prad$Tumor_Sample_Barcode)
@@ -236,7 +318,7 @@ prad$type[which(prad$Tumor_Sample_Barcode%in%subset(xxx,FOXA1_overexpression)$Tu
 
 prad$value=round(prad$value)
 
-prad.rwc <- dcast(prad, symbol ~ Tumor_Sample_Barcode, value.var = "value", fun.aggregate = mean)
+prad.rwc <- reshape2::dcast(prad, symbol ~ Tumor_Sample_Barcode, value.var = "value", fun.aggregate = mean)
 rownames(prad.rwc) <- as.character(prad.rwc$symbol)
 prad.rwc$symbol <- NULL
 
@@ -245,10 +327,8 @@ cntr = unique(subset(prad,type=='CNTR')$Tumor_Sample_Barcode)
 
 pheno = c("CASE","CNTR")
 pheno_nn = c(length(case),length(cntr))
-# ptlen = tlen[rownames(prad.rwc)]
 prad.rwc = prad.rwc[,c(case,cntr)]
 
-# 2. Run DESeq ====
 
 myc.deout2 <- get_DESEQ(counts = prad.rwc, samples = c(case,cntr), 
                         cond = c(rep(pheno[1],pheno_nn[1]),rep(pheno[2],pheno_nn[2])),
@@ -259,28 +339,22 @@ save(myc.deout2, file=paste0("Rdata/PRAD_DESEQ_FOXA1_75th__purity_strata",purity
 
 
 
-# SUBSET ON SRGs ========
+# ∞∞∞ SUBSET ON SRGs ========
 
-library(clusterProfiler)
-library(org.Hs.eg.db)
 
 pl = readRDS('Rdata/KEGG_Genetic_information_process.GSECA.200105.rds')
 
+edger=load(paste0("Rdata/PRAD_EDGR_FOXA1_75th__purity_strata",purity_stratification,".Rdata"))
 
-# EDGER ----
 
-edger=load(paste0('Rdata/differential_expression/REVISION/PRAD_EDGR_FOXA1_75th__purity_strata',purity_stratification,'.Rdata'))
-
-pl$SPLICING_RELATED[!pl$SPLICING_RELATED%in%rownames(dataDEGs)] # "PABPC1" "ZNF638" "QKI"    "SRSF8" 
+pl$SPLICING_RELATED[!pl$SPLICING_RELATED%in%rownames(dataDEGs)] #"PABPC1"  "ZNF638"  "QKI"     "HNRNPLL" "SNU13"   "SRSF8" 
 rownames(dataDEGs)[which(rownames(dataDEGs)=='SFRS8')]='SRSF8'
-pl$SPLICING_RELATED[!pl$SPLICING_RELATED%in%rownames(dataDEGs)] #"PABPC1" "ZNF638" "QKI"  
 rownames(dataDEGs)[which(rownames(dataDEGs)=='QK')]='QKI'
-pl$SPLICING_RELATED[!pl$SPLICING_RELATED%in%rownames(dataDEGs)] #"PABPC1" "ZNF638"
 rownames(dataDEGs)[which(rownames(dataDEGs)=='PABPC2')]='PABPC1'
-pl$SPLICING_RELATED[!pl$SPLICING_RELATED%in%rownames(dataDEGs)] #"ZNF638"
 rownames(dataDEGs)[which(rownames(dataDEGs)=='ZFP638')]='ZNF638'
-pl$SPLICING_RELATED[!pl$SPLICING_RELATED%in%rownames(dataDEGs)] #"ZNF638"
-
+rownames(dataDEGs)[which(rownames(dataDEGs)=='HNRPLL')]='HNRNPLL'
+rownames(dataDEGs)[which(rownames(dataDEGs)=='NHP2L1')]='SNU13'
+pl$SPLICING_RELATED[!pl$SPLICING_RELATED%in%rownames(dataDEGs)]
 
 dataDEGs = subset(dataDEGs,rownames(dataDEGs)%in%pl$SPLICING_RELATED)
 
@@ -288,14 +362,13 @@ dataDEGs = subset(dataDEGs,rownames(dataDEGs)%in%pl$SPLICING_RELATED)
 saveRDS(dataDEGs,paste0('Rdata/PRAD_EDGR_FOXA1_75th_148_SRPs__purity_strata',purity_stratification,'.rds'))
 
 
-# DESEQ ----
 
 deseq=load(paste0('Rdata/PRAD_DESEQ_FOXA1_75th__purity_strata',purity_stratification,'.Rdata'))
 
 dataDEGs = as.data.frame(myc.deout2)
 dataDEGs$symbol = sapply(strsplit(rownames(dataDEGs),'[|]'),`[`,1)
 
-pl$SPLICING_RELATED[!pl$SPLICING_RELATED%in%dataDEGs$symbol] # 
+pl$SPLICING_RELATED[!pl$SPLICING_RELATED%in%dataDEGs$symbol] # "RBFOX1"  "HNRNPLL" "SNU13"   "SRSF5"   "SRSF9"   "SRSF3"   "SRSF7"   "SRSF4"   "SRSF6"   "SRSF1"   "SRSF2"   "U2SURP"  "SRSF10"  "DDX39B"  "SRSF8" 
 dataDEGs$symbol[which(dataDEGs$symbol=='A2BP1')]='RBFOX1'
 dataDEGs$symbol[which(dataDEGs$symbol=='SFRS5')]='SRSF5'
 dataDEGs$symbol[which(dataDEGs$symbol=='SFRS9')]='SRSF9'
@@ -309,6 +382,9 @@ dataDEGs$symbol[which(dataDEGs$symbol=='SFRS5')]='SRSF1'
 dataDEGs$symbol[which(dataDEGs$symbol=='SFRS13A')]='SRSF10'
 dataDEGs$symbol[which(dataDEGs$symbol=='SR140')]='U2SURP'
 dataDEGs$symbol[which(dataDEGs$symbol=='BAT1')]='DDX39B'
+dataDEGs$symbol[which(dataDEGs$symbol=='SFRS8')]='SRSF8'
+dataDEGs$symbol[which(dataDEGs$symbol=='NHP2L1')]='SNU13'
+dataDEGs$symbol[which(dataDEGs$symbol=='HNRPLL')]='HNRNPLL'
 
 
 dataDEGs = subset(dataDEGs,symbol%in%pl$SPLICING_RELATED)
@@ -317,7 +393,7 @@ saveRDS(dataDEGs,paste0('Rdata/PRAD_DESEQ_FOXA1_75th_148_SRPs__purity_strata',pu
 
 
 
-# ∞∞∞ TCGA - load datasets and libraries ----
+# ∞∞∞ TCGA - simulations----
 
 source('sources/config.R')
 
@@ -328,15 +404,14 @@ dataDEGs=readRDS(paste0('Rdata/PRAD_EDGR_FOXA1_75th_148_SRPs__purity_strata',pur
 
 r2 = subset(rna,purity_strata==purity_stratification)
 
-library(plyr)
-library(reshape2)
 
-# ∞∞∞ TCGA - prepare simulations for empirical pvalue ----
+
+# ∞∞∞ TCGA - empirical pvalue ----
 
 SRPs = pl[['SPLICING_RELATED']]
 SRPs%in%unique(r2$symbol)
 sum(SRPs%in%unique(r2$symbol))
-SRPs[!SRPs%in%unique(r2$symbol)]
+SRPs[!SRPs%in%unique(r2$symbol)] #  "RBFOX1"  "HNRNPLL" "SNU13"   "SRSF5"   "SRSF9"   "SRSF3"   "SRSF7"   "SRSF4"   "SRSF6"   "SRSF1"   "SRSF2"   "U2SURP"  "SRSF10"  "DDX39B"  "SRSF8"
 
 r2$alias = r2$symbol
 r2$symbol[r2$symbol=='A2BP1'] = 'RBFOX1'
@@ -352,9 +427,11 @@ r2$symbol[r2$symbol=='SR140'] = 'U2SURP'
 r2$symbol[r2$symbol=='SFRS13A'] = 'SRSF10'
 r2$symbol[r2$symbol=='BAT1'] = 'DDX39B'
 r2$symbol[r2$symbol=='SFRS2B'] = 'SRSF8'
+r2$symbol[r2$symbol=='NHP2L1'] = 'SNU13'
+r2$symbol[r2$symbol=='HNRPLL'] = 'HNRNPLL'
 
 
-# For simulations --------------
+
 
 library(snow, verbose=F)
 library(plyr)
@@ -369,8 +446,6 @@ pat  = unique(r2[, c("sample", "type")])
 
 n_foxa1_he = sum(pat$type) # = 103
 
-# samples_boot = lapply( 1:10000, function(x,y) sample(x,y), x=pat$sample, y=n_foxa1_he)
-
 samples_boot = list()
 set.seed(30580) 
 for(i in 1:10000) samples_boot[[i]]=sample(pat$sample, n_foxa1_he) 
@@ -378,32 +453,15 @@ for(i in 1:10000) samples_boot[[i]]=sample(pat$sample, n_foxa1_he)
 save(samples_boot, r2, SRPs, file=paste0("Rdata/RBP_simulations.montecarlo_TCGA__purity_strata",purity_stratification,".Rdata")) 
 
 
-# ∞∞∞ TCGA - simulations for empirical pvalue ----
-
 library(snow, verbose=F)
 library(plyr)
 
 load(paste0('Rdata/RBP_simulations.montecarlo_TCGA__purity_strata',purity_stratification,'.Rdata'))
 
-simulazione=function(samples, ri, pl){
-  ri$type="WT"
-  ri$type[which(ri$sample%in%samples)]="HE"
-  x = subset(ri, symbol %in% pl)
-  t1 = ddply(x, .(symbol),
-             summarise,
-             # ks=ks.test(TPM[type=="HE"], TPM[type=="WT"], alternative = 'l' )$p.value
-             ks=ks.test(TPM[type=="HE"], TPM[type=="WT"], alternative = 'two.sided' )$p.value # %%%%%%%%%%%%%%%%%%%%%% CAMBIATO
-  )
-  t1$BF.ks = p.adjust(t1$ks, 'bonferroni', n=sum(!is.na(t1$ks)))
-  
-  return(t1[,c('symbol','ks','BF.ks')])
-}
-
-
-nclust = 4
+nclust = 2
 print(nclust)
-
 clus <- makeCluster(nclust)
+
 clusterEvalQ(clus, library(plyr) )
 
 print("EXPORTING")
@@ -419,8 +477,6 @@ save(sim,file=paste0('Rdata/20220308_RBP_sim_1000.montecarlo.ks.test_TCGA_TWO_SI
 
 print("DONE")
 
-
-# ∞∞∞ TCGA - compute differentially expressed SRPs ----
 
 load(paste0('Rdata/RBP_simulations.montecarlo_TCGA__purity_strata',purity_stratification,'.Rdata'))
 
@@ -455,7 +511,7 @@ summarySE <-
     
     datac$se <- datac$sd / sqrt(datac$N)  # Calculate standard error of the mean
     
-     ciMult <- qt(conf.interval/2 + .5, datac$N-1)
+    ciMult <- qt(conf.interval/2 + .5, datac$N-1)
     datac$ci <- datac$se * ciMult
     
     return(datac)
@@ -528,9 +584,9 @@ saveRDS(tc,paste0('Rdata/final_dataset_148_SRPs_TCGA__purity_strata',purity_stra
 
 two_tailed_FDR=subset(tc,DEG.sign_FDR)
 
+}
 
-
-# COMPARE DIFFERENTIAL GENE EXPRESSION RESULTS NEW STRATA ----
+# 4. COMPARE DIFFERENTIAL GENE EXPRESSION RESULTS STRATIFICATION PURITY ----
 
 tc_low=readRDS('Rdata/final_dataset_148_SRPs_TCGA__purity_stratalow.rds')
 tc_low$dataset='purity_low'
@@ -545,23 +601,21 @@ tc_total=rbind(tc[,c('symbol','FDR.ks','L2R','emp','edger.logFC','edger.FDR','de
                tc_high[,c('symbol','FDR.ks','L2R','emp','edger.logFC','edger.FDR','deseq.log2FoldChange','deseq.padj','DEG.sign_FDR','direction','dataset')])
 
 
-library(UpSetR)
+
 
 listInput = list(original=subset(tc_total,DEG.sign_FDR & dataset=='original')$symbol,
                  purity_low=subset(tc_total,DEG.sign_FDR & dataset=='purity_low')$symbol,
                  purity_high=subset(tc_total,DEG.sign_FDR & dataset=='purity_high')$symbol)
-pdf(file=paste0("upset_plot_DE_SRGs_in_purity_NEW_STRATA.pdf"), height=unit(3.5,'cm'), width=unit(5,'cm'), useDingbats = F)
+pdf(paste0(FIG_DIR,file="upset_plot_DE_SRGs_in_purity_NEW_STRATA.pdf"), height=unit(3.5,'cm'), width=unit(5,'cm'), useDingbats = F)
 upset(fromList(listInput), order.by = "freq")
 dev.off()
 
 
 
-# DIFFERENTIAL SPLICING ----
+# 5. DIFFERENTIAL SPLICING ----
 
 
 # Set working path : ----
-
-library(R.utils)
 
 message('[*] Setting working path and creating directories ...')
 
@@ -569,33 +623,34 @@ args = commandArgs(trailingOnly=TRUE)
 
 gene = 'FOXA1'
 
-# purity_stratification='high'
+rna=readRDS("Rdata/RNA_TPM_tumor.rds")
+
+
+# both to be run
 purity_stratification='low'
+purity_stratification='high'
+
+
+  
+print(purity_stratification)
 
 print(paste0('STRATA: ',gene))
 
-# work_dir     = '/Volumes/LaCie/marco/FOXA1/ANALISI_POST_UV2_DISASTER/Analisi_splicing_automatica/results/high_purity/'
-work_dir     = '/Volumes/LaCie/marco/FOXA1/ANALISI_POST_UV2_DISASTER/Analisi_splicing_automatica/results/low_purity/'
+work_dir     = paste0(purity_stratification,'_purity/')
 STRATA_code  = paste0(gene,'_HE') # 'PTEN_loss'
-work_dir     = paste0(work_dir,STRATA_code)
-Fig_out_dir  = paste0(work_dir,'/Figures/splicing_analysis_',STRATA_code)
-Data_out_dir = paste0(work_dir,'/Rdata/splicing_analysis_',STRATA_code)
+Data_out_dir    = paste0(work_dir,STRATA_code)
+FIG_DIR2 = paste0(Data_out_dir,STRATA_code)
 
 mkdirs(work_dir)
-mkdirs(Fig_out_dir)
 mkdirs(Data_out_dir)
-
+mkdirs(FIG_DIR2)
 
 # Sources and libraries: ----
 
 message('[*] Loading sources and libraries ...')
 
-source('/Volumes/LaCie/marco/FOXA1/ANALISI_POST_UV2_DISASTER/Analisi_splicing_automatica/sources/config.R')
-source('/Volumes/LaCie/marco/FOXA1/ANALISI_POST_UV2_DISASTER/Analisi_splicing_automatica/sources/config2.R')
-
-library(reshape2)
-library(plyr)
-library(gtools)
+source('sources/config.R')
+source('sources/config2.R')
 
 
 # Load CASE samples IDs: ----
@@ -605,11 +660,11 @@ message('[*] Loading stratification ...')
 rna_sub <- subset(rna,purity_strata==purity_stratification)
 cases = substr(unique(subset(rna_sub, symbol==gene & FOXA1_overexpression)$sample),1,12)
 
-# XXX. Adapt "ex" dataset with the information about which samples are CASES ----
+# Adapt "ex" dataset with the information about which samples are CASES ----
 
 message('[*] Loading ex dataset, integrating with strata info and saving ...')
 
-ex = readRDS('/Volumes/LaCie/marco/FOXA1/ANALISI_POST_UV2_DISASTER/Analisi_splicing_automatica/sources/PRAD_selected_exons.rds')
+ex = readRDS('Rdata/PRAD_selected_exons.rds')
 
 ex$patient = substr(ex$variable,1,12)
 ex = subset(ex, variable%in%rna_sub$Tumor_Sample_Barcode)
@@ -619,13 +674,11 @@ ex$cases[which(ex$patient%in%cases)] = T
 # Save "ex" dataset with CASES info:
 saveRDS(ex,paste0(Data_out_dir,'/PRAD_selected_exons_',STRATA_code,'.rds'))
 
-# XXX. Create "dex" dataset with statistics related to CASES ----
+# Create "dex" dataset with statistics related to CASES ----
 
 ex_CASE = ex
 rm(ex)
 
-library(gtools)
-library(plyr)
 
 ex_CASE$type=ex_CASE$cases
 
@@ -658,42 +711,23 @@ message('[*] Saving dex dataset ...')
 saveRDS(dex_CASE, file=paste0(Data_out_dir,'/PRAD_dex_',STRATA_code,'.rds'))
 
 
-# # XXX. Add annotations to "dex" dataset <<<<<<<<<<<<<<<<<<<<<< TO BE COMPLETED >>>>>>>>>>>>>>>>>>>>>> ----
-# 
-# message('[*] Adding cancer gene annotations to dex dataset and saving ...')
-# 
+# Add annotations to "dex" dataset ================
+
 dex_CASE = readRDS(paste0(Data_out_dir,'/PRAD_dex_',STRATA_code,'.rds'))
 events_info = readRDS("Rdata/events_info.rds")
 
 dex_CASE = cbind.data.frame( events_info[match(dex_CASE$as_id,events_info$event_id),1:6], dex_CASE[,2:ncol(dex_CASE)] )
 rm(events_info)
-# 
-# prova = readRDS("/Volumes/LaCie/marco/FOXA1/ANALISI_POST_UV2_DISASTER/Analisi_splicing_automatica/sources/NCG6/NCG6_cancergenes.rds")
-# prova2 = read.delim("/Volumes/LaCie/marco/FOXA1/ANALISI_POST_UV2_DISASTER/Analisi_splicing_automatica/sources/NCG6/NCG6_tsgoncogene.tsv", stringsAsFactors = F) # non ci sono però i candidate cancer genes
-# prova2$symbol[578:580]=c('SEPT5', 'SEPT6', 'SEPT9')
-# 
-# prova$vogelstein=NA
-# prova$NCG6_oncogene=NA
-# prova$NCG6_tsg=NA
-# prova$vogelstein=prova2$vogelstein_annotation[match(prova$symbol,prova2$symbol)]
-# prova$NCG6_oncogene=prova2$NCG6_oncogene[match(prova$symbol,prova2$symbol)]
-# prova$NCG6_tsg=prova2$NCG6_tsg[match(prova$symbol,prova2$symbol)]
-# 
-dex_CASE$gene_id = sapply(strsplit(as.character(dex_CASE$gene_name),'\\.'),"[", 1 )
-# 
-# dex_CASE$gtype = 'rst'
-# dex_CASE$gtype[which(dex_CASE$gene_id%in%prova$gene_id)] = 'cancer'
-# 
-# load("/Volumes/LaCie/marco/FOXA1/ANALISI_POST_UV2_DISASTER/Analisi_splicing_automatica/sources/falseCancerGenes.Rdata")
-# dex_CASE$gtype[which(dex_CASE$gene_id%in%prova$gene_id[which(FP%in%prova$symbol)])] = 'rst'
-# 
-# dex_CASE$vogelstein=prova$vogelstein[match(dex_CASE$gene_id,prova$gene_id)]
-# 
-# saveRDS(dex_CASE, file=paste0(Data_out_dir,'/PRAD_dex_',STRATA_code,'.rds'))
 
-# XXX. Add "overall.mean", "overall.sd" to "dex" dataset ----
+ 
+dex_CASE$gene_id = sapply(strsplit(as.character(dex_CASE$gene_name),'\\.'),"[", 1 )
+
+
+#  Add "overall.mean", "overall.sd" to "dex" dataset ==================
 
 message('[*] Adding overall.mean and overall.sd to dex dataset and saving ...')
+
+ex_CASE= readRDS(paste0(Data_out_dir,'/PRAD_selected_exons_',STRATA_code,'.rds'))
 
 nas = ddply(ex_CASE, .(as_id), summarise
             , good = sum(!is.na(value)) # dovrebbe essere inutile a questo punto (abbiamo gia' fatto il filtro sui PSI)
@@ -706,53 +740,14 @@ nas = ddply(ex_CASE, .(as_id), summarise
             , .progress = 'text')
 
 nas$splice_type = sapply(strsplit(as.character(nas$as_id),'_'),"[", 2 )
-
 dex_CASE$overall.mean=nas$mn
+
 dex_CASE$overall.sd=nas$sd
 
 saveRDS(dex_CASE, file=paste0(Data_out_dir,'/PRAD_dex_',STRATA_code,'.rds'))
 
 
-# XXX. Run script "simulations_splicing_pemp_succRate_GENERAL_STRATA.R" for the simulations for pemp and success rate ----
-
-message('[*] RUN BOOTSTRAPPING ON SEPARATE SCRIPT ...')
-
-
-
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# %%%%%%%%%%%%%%% Splicing analysis : SIMULATIONS FOR pemp AND success rate %%%%%%%%%%%%%%%%%%
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-message('[****] SCRIPT: simulations_splicing_pemp_succRate_GENERAL_STRATA_FLIGNER.R')
-
-print('[****] SCRIPT: simulations_splicing_pemp_succRate_GENERAL_STRATA_FLIGNER.R')
-
-
-# Set working path : ----
-
-print(paste0('STRATA: ',gene))
-
-# Functions =========
-get_wk_test <- function(x){ 
-  w = with(x, wilcox.test(value[type], value[!type])$p.value)
-  k = with(x, ks.test(    value[type], value[!type])$p.value)
-  f = with(x, if(length(table(value))>1) { fligner.test(list(value[type],value[!type]))$p.value } else  {NA})
-  return( c('w'=w,'k'=k,'f'=f) ) # c('w'=w,'k'=k,'f'=f)
-}
-
-
-execute_bootstrap <- function(samples, data, type='sample.size'){
-  require(plyr)
-  if(type=='p.empirical'){
-    data$type <- samples$type[match(as.character(data$variable), as.character(samples$variable)) ]
-  }else if(type=='sample.size'){
-    data <- subset(data, as.character(variable)%in%samples)
-  }
-  rx  = ddply(data, .(as_id), get_wk_test)
-  return(rx)
-}
-
+# =  simulations for pemp and success rate ========
 
 
 # LOADINGS =================
@@ -765,19 +760,21 @@ library(plyr)
 dex = readRDS(paste0(Data_out_dir,'/PRAD_dex_',STRATA_code,'.rds'))
 ex  = readRDS(paste0(Data_out_dir,'/PRAD_selected_exons_',STRATA_code,'.rds'))
 ex$type=ex$cases
+ex$as_id=as.character(ex$as_id)
+ex$splice_type=as.character(ex$splice_type)
+ex$variable=as.character(ex$variable)
 
 ex = subset(ex, as_id%in%subset(dex, w<=0.05 | k<=0.05 )$event_id )
 
 tmp = subset(ex, as_id==ex$as_id[1])[,c('variable',"type")]
 patients = unique(tmp)
 
-message('[*] Variables loaded, start bootstrapping ...')
+message( '[*] Variables loaded, start bootstrapping ...')
 
-# P.EMPIRICAL and Sample Size ==========
 
 #********************
 set.seed(30580)
-NCORES = 4
+NCORES = 2
 NSIM   = 1000
 #********************
 
@@ -788,6 +785,7 @@ samples <- lapply(samples, function(x,y){ y$type=sample(y$type); return(y) } , y
 ex$type        = NULL
 ex$splice_type = NULL
 
+message( '[*] Bootstrap P emp ...')
 
 functionsToCluster = as.character(lsf.str(envir = .GlobalEnv))
 sfInit(parallel=TRUE, cpus=NCORES, type="SOCK")
@@ -825,12 +823,18 @@ rm(ex)
 
 sfStop()
 
-rm(ex)
+
 
 saveRDS(samples, file = paste0(Data_out_dir,'/EX_bootstrap_pemp_samples_',STRATA_code,'.rds'))
 saveRDS(w, file = paste0(Data_out_dir,'/EX_bootstrap_pemp_pv_wilcoxon_',STRATA_code,'.rds'))
 saveRDS(k, file = paste0(Data_out_dir,'/EX_bootstrap_pemp_pv_kolgomorov_',STRATA_code,'.rds'))
 saveRDS(f, file = paste0(Data_out_dir,'/EX_bootstrap_pemp_pv_fligner_',STRATA_code,'.rds'))
+
+rm(w)
+rm(k)
+rm(f)
+
+message( '[*] Done')
 
 # Sample size
 pheno <- list()
@@ -852,7 +856,7 @@ ex$type=ex$cases
 ex = subset(ex, as_id%in%subset(dex, w<=0.05 | k<=0.05 )$event_id )
 ex$splice_type = NULL
 
-
+message( '[*] Bootstrap success rate ...')
 functionsToCluster = as.character(lsf.str(envir = .GlobalEnv))
 sfInit(parallel=TRUE, cpus=NCORES, type="SOCK")
 sfExport(list = c(functionsToCluster, "ex"))
@@ -883,20 +887,19 @@ rownames(f) = l[[1]][,1]
 colnames(f) = NULL
 
 saveRDS(samples, file = paste0(Data_out_dir,'/EX_bootstrap_SR_samples_',STRATA_code,'.rds'))
-saveRDS(w, file = paste0(Data_out_dir,'/EX_bootstrap_SR_pv_wilcoxon_',STRATA_code,'.rds'))
+saveRDS( w, file = paste0(Data_out_dir,'/EX_bootstrap_SR_pv_wilcoxon_',STRATA_code,'.rds'))
 saveRDS(k, file = paste0(Data_out_dir,'/EX_bootstrap_SR_pv_kolgomorov_',STRATA_code,'.rds'))
 saveRDS(f, file = paste0(Data_out_dir,'/EX_bootstrap_SR_pv_fligner_',STRATA_code,'.rds'))
 
+rm(w)
+rm(k)
+rm(f)
 
-
-# XXX. Collect bootstrapping results ----
-
+message( '[*] Done')
 message('[*] Collecting bootstrapping results ...')
 
-library(reshape2)
 
-dex_CASE = readRDS(paste0(Data_out_dir,'/PRAD_dex_',STRATA_code,'.rds'))
-obs=dex_CASE[,c(1,15:21)]
+obs = readRDS(paste0(Data_out_dir,'/PRAD_dex_',STRATA_code,'.rds'))
 
 # P emp - Wilcoxon ----
 
@@ -908,7 +911,7 @@ colnames(ugo)[1]='event_id'
 colnames(ugo)[2]='w'
 
 l = ugo
-l$obs.w <- obs$w[match(l$event_id,obs$event_id)]
+l$obs.w <- obs$w[match(l$event_id,obs$as_id)]
 
 l <- ddply(l, .(event_id), summarise
            
@@ -929,7 +932,7 @@ colnames(ugo)[1]='event_id'
 colnames(ugo)[2]='k'
 
 l = ugo
-l$obs.k <- obs$k[match(l$event_id,obs$event_id)]
+l$obs.k <- obs$k[match(l$event_id,obs$as_id)]
 
 l <- ddply(l, .(event_id), summarise
            
@@ -950,7 +953,7 @@ colnames(ugo)[1]='event_id'
 colnames(ugo)[2]='f'
 
 l = ugo
-l$obs.f <- obs$f[match(l$event_id,obs$event_id)]
+l$obs.f <- obs$fligner[match(l$event_id,obs$as_id)]
 
 l <- ddply(l, .(event_id), summarise
            
@@ -1027,7 +1030,7 @@ l <- ddply(l, .(event_id), summarise
 l.f.size = l
 
 
-# Integration in the "dex" dataset ----
+# Integration in the "dex" dataset ==================
 
 message('[*] Integrating bootstrapping results into dex and saving ...')
 
@@ -1050,7 +1053,7 @@ dex_CASE$s.rate.f = l.f.size$success_rate.f[match(dex_CASE$event_id,l.f.size$eve
 saveRDS(dex_CASE, file=paste0(Data_out_dir,'/PRAD_dex_',STRATA_code,'_bootstrap.rds'))
 
 
-# XXX. Select significantly differentially included ASE ----
+# Select significantly differentially included ASE ----
 
 message('[*] Selecting svASE ...')
 
@@ -1069,7 +1072,8 @@ saveRDS(dex_CASE, file=paste0(Data_out_dir,'/PRAD_dex_',STRATA_code,'_bootstrap.
 
 # Add info about gene symbol and standard deviation ---
 
-map_ENSnames_symbols <- readRDS("/Volumes/LaCie/marco/FOXA1/ANALISI_POST_UV2_DISASTER/Analisi_splicing_automatica/sources/map_ENSnames_symbols.rds")
+
+map_ENSnames_symbols <- readRDS("sources/map_ENSnames_symbols.rds")
 dex_CASE$symbol   = NA
 dex_CASE$symbol   = map_ENSnames_symbols$symbol[match(dex_CASE$gene_id,map_ENSnames_symbols$ensembl_gene_id)]
 dex_CASE$case.sd  = dex_CASE$case.se*sqrt(dex_CASE$case.N)
@@ -1080,7 +1084,7 @@ dex_CASE$delta.sd = dex_CASE$case.sd-dex_CASE$cntr.sd
 qtd = quantile(dex_CASE$delta.mean, seq(0,1,0.01))
 qts = quantile(dex_CASE$delta.sd, seq(0,1,0.01))
 
-pdf(file=paste0(Fig_out_dir,'/Quantiles_delta_mean_standard_dev_',STRATA_code,'.pdf'), paper = 'a4', useDingbats = F)
+pdf(file=paste0(FIG_DIR2,'/Quantiles_delta_mean_standard_dev_',STRATA_code,'.pdf'), paper = 'a4', useDingbats = F)
 par(mfrow=c(2,1))
 plot(qtd, pch=1, col='grey25', main="Quantiles delta mean");abline(h=qtd['15%'], col='red');abline(h=qtd['85%'], col='red')
 plot(qts, pch=1, col='grey25', main="Quantiles delta st.dev.");abline(h=qts['20%'], col='red');abline(h=qts['80%'], col='red')
@@ -1124,34 +1128,35 @@ dexSIGN_CASE$delta.class.sd[which(dexSIGN_CASE$delta.sd>0)] = 'H sd'
 dexSIGN_CASE$delta.class.sd[which(dexSIGN_CASE$delta.sd<0)] = 'L sd'
 dexSIGN_CASE$delta.class.sd = as.factor(dexSIGN_CASE$delta.class.sd)
 
-library(ggplot2)
 
-pdf(file=paste0(Fig_out_dir,'/Scatter_delta.mean_dexSIGN_',STRATA_code,'.pdf'), width = 10, height = 7, useDingbats = F)
-ggplot(dexSIGN_CASE, aes(x=overall.mean, y=overall.sd, color=delta.class.mean)) +
+pdf(file=paste0(FIG_DIR2,'/Scatter_delta.mean_dexSIGN_',STRATA_code,'.pdf'), width = 10, height = 7, useDingbats = F)
+print(ggplot(dexSIGN_CASE, aes(x=overall.mean, y=overall.sd, color=delta.class.mean)) +
   geom_point(size=1) + ggtitle(paste0(STRATA_code,' svASEs (',nrow(dexSIGN_CASE),')')) +
-  scale_color_manual(values=c(rgb(223/255,0,63/255),rgb(18/255,0,124/255)))# + stat_function(fun = y, color='black') + geom_vline(xintercept = 0.15) + geom_vline(xintercept = 0.85)
+  scale_color_manual(values=c(rgb(223/255,0,63/255),rgb(18/255,0,124/255))))# + stat_function(fun = y, color='black') + geom_vline(xintercept = 0.15) + geom_vline(xintercept = 0.85)
 dev.off()
 
-pdf(file=paste0(Fig_out_dir,'/Scatter_delta.sd_dexSIGN_',STRATA_code,'.pdf'), width = 10, height = 7, useDingbats = F)
-ggplot(dexSIGN_CASE, aes(x=overall.mean, y=overall.sd, color=delta.class.sd)) +
+pdf(file=paste0(FIG_DIR2,'/Scatter_delta.sd_dexSIGN_',STRATA_code,'.pdf'), width = 10, height = 7, useDingbats = F)
+print(ggplot(dexSIGN_CASE, aes(x=overall.mean, y=overall.sd, color=delta.class.sd)) +
   geom_point(size=1) + ggtitle(paste0(STRATA_code,' svASEs (',nrow(dexSIGN_CASE),')')) +
-  scale_color_manual(values=c(rgb(242/255,117/255,109/255),rgb(26/255,166/255,184/255)))# + stat_function(fun = y, color='black') + geom_vline(xintercept = 0.15) + geom_vline(xintercept = 0.85)
+  scale_color_manual(values=c(rgb(242/255,117/255,109/255),rgb(26/255,166/255,184/255))))# + stat_function(fun = y, color='black') + geom_vline(xintercept = 0.15) + geom_vline(xintercept = 0.85)
 dev.off()
 
 
-pdf(file=paste0(Fig_out_dir,'/Histogram_delta.mean_dexSIGN_',STRATA_code,'.pdf'), width = 10, height = 7, useDingbats = F)
-ggplot(dexSIGN_CASE,aes(x=overall.mean,col=delta.class.mean))+geom_histogram(alpha=0, position="identity", bins=50)+theme_classic() +
-  scale_color_manual(values=c(rgb(223/255,0,63/255),rgb(18/255,0,124/255)))
+pdf(file=paste0(FIG_DIR2,'/Histogram_delta.mean_dexSIGN_',STRATA_code,'.pdf'), width = 10, height = 7, useDingbats = F)
+print(ggplot(dexSIGN_CASE,aes(x=overall.mean,col=delta.class.mean))+geom_histogram(alpha=0, position="identity", bins=50)+theme_classic() +
+  scale_color_manual(values=c(rgb(223/255,0,63/255),rgb(18/255,0,124/255))))
 dev.off()
 
-pdf(file=paste0(Fig_out_dir,'/Histogram_delta.sd_dexSIGN_',STRATA_code,'.pdf'), width = 10, height = 7, useDingbats = F)
-ggplot(dexSIGN_CASE,aes(x=overall.mean,col=delta.class.sd))+geom_histogram(alpha=0, position="identity", bins=50)+theme_classic() +
-  scale_color_manual(values=c(rgb(242/255,117/255,109/255),rgb(26/255,166/255,184/255)))
+pdf(file=paste0(FIG_DIR2,'/Histogram_delta.sd_dexSIGN_',STRATA_code,'.pdf'), width = 10, height = 7, useDingbats = F)
+print(ggplot(dexSIGN_CASE,aes(x=overall.mean,col=delta.class.sd))+geom_histogram(alpha=0, position="identity", bins=50)+theme_classic() +
+  scale_color_manual(values=c(rgb(242/255,117/255,109/255),rgb(26/255,166/255,184/255))))
 dev.off()
 
 
 
 # Vector field plots ----
+
+
 
 p1=ggplot(dexSIGN_CASE,aes(x=cntr.mean,y=cntr.sd,xend=case.mean,yend=case.sd,col=sign(delta.mean)))+geom_segment(arrow = arrow(length = unit(0.1,"cm")))+scale_color_gradient(low=rgb(18/255,0,124/255), high=rgb(223/255,0,63/255))+ggtitle("ALL")+theme_bw()+ylim(0,42) # aes(x = x1, y = y1, xend = x2, yend = y2, colour = "segment"), data = df
 p2=ggplot(subset(dexSIGN_CASE,event_type=='ES'),aes(x=cntr.mean,y=cntr.sd,xend=case.mean,yend=case.sd,col=sign(delta.mean)))+geom_segment(arrow = arrow(length = unit(0.1,"cm")))+scale_color_gradient(low=rgb(18/255,0,124/255), high=rgb(223/255,0,63/255))+ggtitle("ES")+theme_bw()+ylim(0,42) # aes(x = x1, y = y1, xend = x2, yend = y2, colour = "segment"), data = df
@@ -1159,8 +1164,8 @@ p3=ggplot(subset(dexSIGN_CASE,event_type=='A3'),aes(x=cntr.mean,y=cntr.sd,xend=c
 p4=ggplot(subset(dexSIGN_CASE,event_type=='A5'),aes(x=cntr.mean,y=cntr.sd,xend=case.mean,yend=case.sd,col=sign(delta.mean)))+geom_segment(arrow = arrow(length = unit(0.1,"cm")))+scale_color_gradient(low=rgb(18/255,0,124/255), high=rgb(223/255,0,63/255))+ggtitle("A5")+theme_bw()+ylim(0,42) # aes(x = x1, y = y1, xend = x2, yend = y2, colour = "segment"), data = df
 p5=ggplot(subset(dexSIGN_CASE,event_type=='IR'),aes(x=cntr.mean,y=cntr.sd,xend=case.mean,yend=case.sd,col=sign(delta.mean)))+geom_segment(arrow = arrow(length = unit(0.1,"cm")))+scale_color_gradient(low=rgb(18/255,0,124/255), high=rgb(223/255,0,63/255))+ggtitle("IR")+theme_bw()+ylim(0,42) # aes(x = x1, y = y1, xend = x2, yend = y2, colour = "segment"), data = df
 p6=ggplot(subset(dexSIGN_CASE,event_type=='MEX'),aes(x=cntr.mean,y=cntr.sd,xend=case.mean,yend=case.sd,col=sign(delta.mean)))+geom_segment(arrow = arrow(length = unit(0.1,"cm")))+scale_color_gradient(low=rgb(18/255,0,124/255), high=rgb(223/255,0,63/255))+ggtitle("MEX")+theme_bw()+ylim(0,42) # aes(x = x1, y = y1, xend = x2, yend = y2, colour = "segment"), data = df
-pdf(file=paste0(Fig_out_dir,'/Scatter_plot_vector_field_color_mean_ALL_EVENTS_AND_TYPES_dexSIGN_',STRATA_code,'.pdf'), width = 17, height = 6.5, useDingbats = F)
-grid.arrange(p1,p2,p3,p4,p5,p6,ncol=3)
+pdf(file=paste0(FIG_DIR2,'/Scatter_plot_vector_field_color_mean_ALL_EVENTS_AND_TYPES_dexSIGN_',STRATA_code,'.pdf'), width = 17, height = 6.5, useDingbats = F)
+print(grid.arrange(p1,p2,p3,p4,p5,p6,ncol=3))
 dev.off()
 
 p1=ggplot(dexSIGN_CASE,aes(x=cntr.mean,y=cntr.sd,xend=case.mean,yend=case.sd,col=sign(delta.sd)))+geom_segment(arrow = arrow(length = unit(0.1,"cm")))+scale_color_gradient(low=rgb(26/255,166/255,184/255), high=rgb(242/255,117/255,109/255))+ggtitle("ALL")+theme_bw()+ylim(0,42) # aes(x = x1, y = y1, xend = x2, yend = y2, colour = "segment"), data = df
@@ -1169,13 +1174,14 @@ p3=ggplot(subset(dexSIGN_CASE,event_type=='A3'),aes(x=cntr.mean,y=cntr.sd,xend=c
 p4=ggplot(subset(dexSIGN_CASE,event_type=='A5'),aes(x=cntr.mean,y=cntr.sd,xend=case.mean,yend=case.sd,col=sign(delta.sd)))+geom_segment(arrow = arrow(length = unit(0.1,"cm")))+scale_color_gradient(low=rgb(26/255,166/255,184/255), high=rgb(242/255,117/255,109/255))+ggtitle("A5")+theme_bw()+ylim(0,42) # aes(x = x1, y = y1, xend = x2, yend = y2, colour = "segment"), data = df
 p5=ggplot(subset(dexSIGN_CASE,event_type=='IR'),aes(x=cntr.mean,y=cntr.sd,xend=case.mean,yend=case.sd,col=sign(delta.sd)))+geom_segment(arrow = arrow(length = unit(0.1,"cm")))+scale_color_gradient(low=rgb(26/255,166/255,184/255), high=rgb(242/255,117/255,109/255))+ggtitle("IR")+theme_bw()+ylim(0,42) # aes(x = x1, y = y1, xend = x2, yend = y2, colour = "segment"), data = df
 p6=ggplot(subset(dexSIGN_CASE,event_type=='MEX'),aes(x=cntr.mean,y=cntr.sd,xend=case.mean,yend=case.sd,col=sign(delta.sd)))+geom_segment(arrow = arrow(length = unit(0.1,"cm")))+scale_color_gradient(low=rgb(26/255,166/255,184/255), high=rgb(242/255,117/255,109/255))+ggtitle("MEX")+theme_bw()+ylim(0,42) # aes(x = x1, y = y1, xend = x2, yend = y2, colour = "segment"), data = df
-pdf(file=paste0(Fig_out_dir,'/Scatter_plot_vector_field_color_sd_ALL_EVENTS_AND_TYPES_dexSIGN_',STRATA_code,'.pdf'), width = 17, height = 6.5, useDingbats = F)
-grid.arrange(p1,p2,p3,p4,p5,p6,ncol=3)
+pdf(file=paste0(FIG_DIR2,'/Scatter_plot_vector_field_color_sd_ALL_EVENTS_AND_TYPES_dexSIGN_',STRATA_code,'.pdf'), width = 17, height = 6.5, useDingbats = F)
+print(grid.arrange(p1,p2,p3,p4,p5,p6,ncol=3))
 dev.off()
 
 
 
 # Histograms in 4 classes ----
+
 
 pvalue=binom.test(x=nrow(subset(dexSIGN_CASE,overall.mean<=0.15 & delta.mean<0)), n=nrow(subset(dexSIGN_CASE,overall.mean<=0.15)), alternative="two.sided")$p.val
 if (pvalue<0.001) {
@@ -1213,10 +1219,9 @@ if (pvalue<0.001) {
   pvalue ='*'
 } else {pvalue='ns'}
 p4=as.grob(~barplot(c(nrow(subset(dexSIGN_CASE,overall.mean>0.85 & delta.mean<0)),nrow(subset(dexSIGN_CASE,overall.mean>0.85 & delta.mean>0))),ylim = c(0,2000),xlab = '0.85-1',main=as.character(pvalue)))
-pdf(file=paste0(Fig_out_dir,'/Histogram_delta_mean_4_classes_dexSIGN_',STRATA_code,'.pdf'), width = 10, height = 7, useDingbats = F)
-grid.arrange(p1,p2,p3,p4,ncol=4)
+pdf(file=paste0(FIG_DIR2,'/Histogram_delta_mean_4_classes_dexSIGN_',STRATA_code,'.pdf'), width = 10, height = 7, useDingbats = F)
+print(grid.arrange(p1,p2,p3,p4,ncol=4))
 dev.off()
-
 pvalue=binom.test(x=nrow(subset(dexSIGN_CASE,overall.mean<=0.15 & delta.sd<0)), n=nrow(subset(dexSIGN_CASE,overall.mean<=0.15)), alternative="two.sided")$p.val
 if (pvalue<0.001) {
   pvalue = '***'
@@ -1253,43 +1258,13 @@ if (pvalue<0.001) {
   pvalue ='*'
 } else {pvalue='ns'}
 p4=as.grob(~barplot(c(nrow(subset(dexSIGN_CASE,overall.mean>0.85 & delta.sd<0)),nrow(subset(dexSIGN_CASE,overall.mean>0.85 & delta.sd>0))),ylim = c(0,2000),xlab = '0.85-1',main=as.character(pvalue)))
-pdf(file=paste0(Fig_out_dir,'/Histogram_delta_sd_4_classes_dexSIGN_',STRATA_code,'.pdf'), width = 10, height = 7, useDingbats = F)
-grid.arrange(p1,p2,p3,p4,ncol=4)
+pdf(file=paste0(FIG_DIR2,'/Histogram_delta_sd_4_classes_dexSIGN_',STRATA_code,'.pdf'), width = 10, height = 7, useDingbats = F)
+print(grid.arrange(p1,p2,p3,p4,ncol=4))
 dev.off()
 
 
 
 # Gene ontology ----
-
-library(DOSE)
-library(igraph)
-library(org.Hs.eg.db)
-library(tidyverse)
-library(magrittr)
-library(plyr)
-library(clusterProfiler)
-library(msigdbr)
-
-format_enrichr = function(x,  org=org.Hs.eg.db, key="ENTREZID"){
-  y <- setReadable(x, OrgDb = org, keyType=key)
-  y <- clusterProfiler::mutate(y, richFactor = Count / as.numeric(sub("/\\d+", "", BgRatio)))
-  y <- clusterProfiler::mutate(y, FoldEnrichment = parse_ratio(GeneRatio) / parse_ratio(BgRatio))
-  y
-}
-
-get_enrich=function(x
-                    , TERM2GENE,  pAdjustMethod = "BH", pvalueCutoff=1, qvalueCutoff=1, minGSSize = 10
-                    ,fromType="ENSEMBL", toType=c("UNIPROT", "SYMBOL", 'ENTREZID','ALIAS'), OrgDb="org.Hs.eg.db",typeFormat='ENTREZID'){
-  ids <- bitr(unique(x$ensembl), fromType=fromType, toType=toType, OrgDb=OrgDb)
-  ego <- enricher(unique(ids$ENTREZID)  #, universe = unique(bg$ENTREZID)
-                  , TERM2GENE = TERM2GENE
-                  , pAdjustMethod = pAdjustMethod
-                  , pvalueCutoff=pvalueCutoff
-                  , qvalueCutoff=qvalueCutoff
-                  , minGSSize = minGSSize )
-  ego = format_enrichr(ego, org=OrgDb, key=typeFormat)
-  list('id'=ids, 'go'=ego)
-}
 
 dexSIGN = readRDS(paste0(Data_out_dir,'/dexSIGN_',STRATA_code,'.rds'))
 dexSIGN$ensembl = dexSIGN$gene_id
@@ -1305,7 +1280,8 @@ ase = dexSIGN[,cls]
 
 pll = load('Rdata/KEGG_list.148.SPLICING_RELATED.Rdata')
 
-library(msigdbr)
+kegg=read.csv("Tables/KEGG.csv")
+
 k = msigdbr(species = "Homo sapiens", category = "C2", subcategory = 'KEGG')
 
 m_t2g <-  k%>%  dplyr::select(gs_name, entrez_gene)
@@ -1320,6 +1296,9 @@ df = rbind.data.frame()
 for(i in names(p)){  df = rbind.data.frame(df ,cbind.data.frame(cell=i, p[[i]]$go@result) )}
 df$msigDB_158=df$Description
 df$msigDB_158[df$msigDB_158=='SRG']='KEGG_SPLICEOSOME'
+
+library(dplyr)
+
 df = left_join(df, kegg, by='msigDB_158')
 df$type=df$cell
 
@@ -1336,9 +1315,9 @@ tmp_KEGG_186_TCGA=df
 tmp_KEGG_186_TCGA$ID=as.character(tmp_KEGG_186_TCGA$ID)
 
 
-pdf(file=paste0(Fig_out_dir,'/ORA_all_event_types_TCGA_KEGG_186__KEGG_186.pdf'), height = unit(4,'cm'), width = unit(8, 'cm'), useDingbats = F)
+pdf(file=paste0(FIG_DIR2,'/ORA_all_event_types_TCGA_KEGG_186_', STRATA_code, '.pdf'), height = unit(4,'cm'), width = unit(8, 'cm'), useDingbats = F)
 to_plot=subset(to_plot,p.adjust<0.1)
-ggplot( to_plot,
+print(ggplot( to_plot,
         aes(x= parse_ratio(GeneRatio), y= ID)) + 
   geom_segment(aes(xend=0, yend = Description)) +
   geom_point(aes(color=factor(p.adjust<=.25), fill=p.adjust, size = Count),shape=21) +
@@ -1349,37 +1328,10 @@ ggplot( to_plot,
   # , values  =scales::rescale(c(0,0.001,0.1,0.25,0.5,.75,1)), breaks=c(0,0.01,0.1,0.25,.5,1)) +
   scale_size_continuous(range=c(2, 10)) +
   theme_minimal() + xlab("Gene Ratio") +ylab(NULL)+
-  facet_wrap(~type, nrow=1)
+  facet_wrap(~type, nrow=1))
 dev.off()
 
-
-
-
-# Merge high and low purity results ----
-
-to_plot_high=to_plot
-to_plot_high$purity='high'
-to_plot_low=to_plot
-to_plot_low$purity='low'
-to_plot=rbind(to_plot_high,to_plot_low)
-
-to_plot=subset(to_plot,p.adjust<0.1)
-
-pdf(file=paste0('ORA_all_event_types_TCGA_KEGG_186__KEGG_186__HIGH_AND_LOW_PURITY_MERGED.pdf'), height = unit(4,'cm'), width = unit(8, 'cm'), useDingbats = F)
-to_plot2=to_plot[order(to_plot$p.adjust,decreasing = T),]
-to_plot2$ID=factor(to_plot2$ID,levels=unique(to_plot2$ID))
-ggplot( to_plot2,
-        aes(x= parse_ratio(GeneRatio), y= ID)) + 
-  geom_segment(aes(xend=0, yend = Description)) +
-  geom_point(aes(color=factor(p.adjust<=.25), fill=p.adjust, size = Count, shape=purity)) +
-  geom_text(aes(label=rank)) +
-  scale_shape_manual(values=c(21,24))+
-  scale_color_manual(values=c('transparent','black'))+
-  scale_fill_viridis_c(option = 'D',guide=guide_colorbar(reverse=T, draw.llim = T), direction = -1)+#,
-  scale_size_continuous(range=c(2, 10)) +
-  theme_minimal() + xlab("Gene Ratio") +ylab(NULL)+
-  facet_wrap(~type, nrow=1)
-dev.off()
+saveRDS(to_plot,paste0('Data_out_dir/ORA_all_event_types_TCGA_KEGG_186_', STRATA_code, '.rds'))
 
 
 
@@ -1440,23 +1392,16 @@ rownames(surv_summary_pois_ess) = c('logrank_pvalue','hazard_ratio','prop_ass_pv
 
 
 gfit <- survfit(formula = as.formula("Surv(time=first_event_months, event=DFS) ~ tmp"), data = subset(dff, first_event_months<110))
-pdf(file=paste0(Fig_out_dir,'/kaplan_meier_FLNA_exon_30.pdf'), height = unit(5.5,'cm'), width = unit(5, 'cm'), useDingbats = F)
-ggsurvplot(gfit, data = subset(dff, first_event_months<110), risk.table = TRUE, palette = c('green','red','darkgreen','orange'), pval = T, pval.method = T)
+pdf(file=paste0(FIG_DIR2,'/kaplan_meier_FLNA_exon_30.pdf'), height = unit(5.5,'cm'), width = unit(5, 'cm'), useDingbats = F)
+print(ggsurvplot(gfit, data = subset(dff, first_event_months<110), risk.table = TRUE, palette = c('green','red','darkgreen','orange'), pval = T, pval.method = T))
 dev.off()
 
 
 
 
+#  Cumulative distr. of events  ----
+ 
 
-
-# ******************** ----
-# ******************** Cumulative distr. of events in HIGH and LOW purity datasets ----
-# ******************** ----
-
-
-library(ggplot2)
-library(gridExtra)
-library(ggplotify)
 
 dexSIGN=readRDS(paste0(Data_out_dir,'/dexSIGN_',STRATA_code,'.rds'))
 
@@ -1531,13 +1476,6 @@ colnames(res_df_2)[6:10]=paste0(colnames(res_df_2)[6:10],'_ENH')
 res_df_2$enh_sil_ratio=res_df_2$counts_ENH/(res_df_2$counts_ENH+res_df_2$counts_SIL)
 p_ratio_sd=ggplot(res_df_2,aes(x=overall.mean.psi_ENH,y=enh_sil_ratio))+geom_line()+theme_bw()+geom_hline(yintercept = 0.5,linetype = "dashed")+ggtitle('Standard deviation')+
   stat_smooth(aes(y=enh_sil_ratio, x=overall.mean.psi_ENH), method = lm, formula = y ~ poly(x, 10), se = FALSE, size=0.75)
-
-
-
-# grid.arrange(p_mean,p_sd,p_mean_counts,p_sd_counts,ncol=2)
-# 
-# grid.arrange(p_ratio_mean,p_ratio_sd,ncol=2)
-
 
 
 # NULL MODEL ----
@@ -1684,9 +1622,6 @@ p_mean_compl_2 = ggplot() +
 
 
 
-
-
-
 to_plot_enh=ddply(subset(res_df_sd,type=='enh'),.(overall.mean.psi),summarise,mean_c=mean(cum_counts),median_c=median(cum_counts),c_95=quantile(cum_counts,seq(0,1,0.01))['95%'],c_05=quantile(cum_counts,seq(0,1,0.01))['5%'],
                   mean_cf=mean(cum_counts_fraction),median_cf=median(cum_counts_fraction),cf_95=quantile(cum_counts_fraction,seq(0,1,0.01))['95%'],cf_05=quantile(cum_counts_fraction,seq(0,1,0.01))['5%'])
 to_plot_sil=ddply(subset(res_df_sd,type=='sil'),.(overall.mean.psi),summarise,mean_c=mean(cum_counts),median_c=median(cum_counts),c_95=quantile(cum_counts,seq(0,1,0.01))['95%'],c_05=quantile(cum_counts,seq(0,1,0.01))['5%'],
@@ -1702,12 +1637,12 @@ p_sd_compl = ggplot() +
 
 
 if (purity_stratification=='high') {
-  pdf(file = 'TCGA_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg__high_purity.pdf',width = unit(10,'cm'),height = unit(3.5,'cm'))
-  grid.arrange(p_mean_compl,p_sd_compl,ncol=2)
+  pdf(paste0(FIG_DIR2, file = 'TCGA_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg__high_purity.pdf'),width = unit(10,'cm'),height = unit(3.5,'cm'))
+  print(grid.arrange(p_mean_compl,p_sd_compl,ncol=2))
   dev.off()
 } else if (purity_stratification=='low') {
-  pdf(file = 'TCGA_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg__low_purity.pdf',width = unit(10,'cm'),height = unit(3.5,'cm'))
-  grid.arrange(p_mean_compl,p_sd_compl,ncol=2)
+  pdf(paste0(FIG_DIR2, file = 'TCGA_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg__low_purity.pdf'),width = unit(10,'cm'),height = unit(3.5,'cm'))
+  print(grid.arrange(p_mean_compl,p_sd_compl,ncol=2))
   dev.off()
 }
 
@@ -1744,18 +1679,16 @@ p_sd_compl_2 = ggplot() +
 
 
 if (purity_stratification=='high') {
-  pdf(file = 'TCGA_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_SPLITTED__high_purity.pdf',width = unit(10,'cm'),height = unit(3.5,'cm'))
-  grid.arrange(p_mean_compl_2,p_sd_compl_2,ncol=2)
+  pdf(paste0(FIG_DIR2, file = 'TCGA_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_SPLITTED__high_purity.pdf'),width = unit(10,'cm'),height = unit(3.5,'cm'))
+  print(grid.arrange(p_mean_compl_2,p_sd_compl_2,ncol=2))
   dev.off()
 } else if (purity_stratification=='low') {
-  pdf(file = 'TCGA_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_SPLITTED__low_purity.pdf',width = unit(10,'cm'),height = unit(3.5,'cm'))
-  grid.arrange(p_mean_compl_2,p_sd_compl_2,ncol=2)
+  pdf(paste0(FIG_DIR2, file = 'TCGA_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_SPLITTED__low_purity.pdf'),width = unit(10,'cm'),height = unit(3.5,'cm'))
+  print(grid.arrange(p_mean_compl_2,p_sd_compl_2,ncol=2))
   dev.off()
 }
 
 
-
-# %%%% INVERTED ----
 
 
 # MEAN ----
@@ -1915,20 +1848,20 @@ p_sd_compl_2_inv = ggplot() +
 
 
 if (purity_stratification=='high') {
-  pdf(file = 'TCGA_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_inverted__high_purity.pdf',width = unit(10,'cm'),height = unit(3.5,'cm'))
-  grid.arrange(p_mean_compl_inv,p_sd_compl_inv,ncol=2)
+  pdf(paste0(FIG_DIR2, file = 'TCGA_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_inverted__high_purity.pdf'),width = unit(10,'cm'),height = unit(3.5,'cm'))
+  print(grid.arrange(p_mean_compl_inv,p_sd_compl_inv,ncol=2))
   dev.off()
   
-  pdf(file = 'TCGA_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_SPLITTED_inverted__high_purity.pdf',width = unit(10,'cm'),height = unit(3.5,'cm'))
-  grid.arrange(p_mean_compl_2_inv,p_sd_compl_2_inv,ncol=2)
+  pdf(paste0(FIG_DIR2, file = 'TCGA_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_SPLITTED_inverted__high_purity.pdf'),width = unit(10,'cm'),height = unit(3.5,'cm'))
+  print(grid.arrange(p_mean_compl_2_inv,p_sd_compl_2_inv,ncol=2))
   dev.off()
 } else if (purity_stratification=='low') {
-  pdf(file = 'TCGA_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_inverted__low_purity.pdf',width = unit(10,'cm'),height = unit(3.5,'cm'))
-  grid.arrange(p_mean_compl_inv,p_sd_compl_inv,ncol=2)
+  pdf(paste0(FIG_DIR2, file = 'TCGA_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_inverted__low_purity.pdf'),width = unit(10,'cm'),height = unit(3.5,'cm'))
+  print(grid.arrange(p_mean_compl_inv,p_sd_compl_inv,ncol=2))
   dev.off()
   
-  pdf(file = 'TCGA_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_SPLITTED_inverted__low_purity.pdf',width = unit(10,'cm'),height = unit(3.5,'cm'))
-  grid.arrange(p_mean_compl_2_inv,p_sd_compl_2_inv,ncol=2)
+  pdf(paste0(FIG_DIR2, file = 'TCGA_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_SPLITTED_inverted__low_purity.pdf'),width = unit(10,'cm'),height = unit(3.5,'cm'))
+  print(grid.arrange(p_mean_compl_2_inv,p_sd_compl_2_inv,ncol=2))
   dev.off()
 }
 
@@ -1936,11 +1869,11 @@ if (purity_stratification=='high') {
 
 
 
-# ******************** ----
-# ******************** Simulations with RNAseqDB data ----
-# ******************** ----
+ 
+# 6. ANALYSIS USING NORMALIZED RNASEQDB DATA ----
+ 
 
-# • Load and normalize datasets to counts per million reads ----
+# Load and normalize datasets to counts per million reads ----
 
 prad=read.delim2('Tables/RNAseqDB/prad-rsem-count-tcga-t.txt',stringsAsFactors = F)
 rownames_prad=prad$Hugo_Symbol
@@ -1951,15 +1884,6 @@ rownames(prad)=rownames_prad
 prad=apply(prad, 2, function(x) x/sum(x)*1000000)
 colnames(prad)=gsub(colnames(prad),pattern = '[.]',replacement = '-')
 
-# prad_normal=read.delim2('/Volumes/LaCie/marco/FOXA1/ANALISI_POST_UV2_DISASTER/RNAseqDB/prad-rsem-count-tcga.txt',stringsAsFactors = F)
-# rownames_prad_normal=prad_normal$Hugo_Symbol
-# prad_normal$Hugo_Symbol=NULL
-# prad_normal$Entrez_Gene_Id=NULL
-# prad_normal=apply(prad_normal, 2, as.numeric)
-# rownames(prad_normal)=rownames_prad_normal
-# prad_normal=apply(prad_normal, 2, function(x) x/sum(x)*1000000)
-# colnames(prad_normal)=gsub(colnames(prad_normal),pattern = '[.]',replacement = '-')
-
 prostate=read.delim2('Tables/RNAseqDB/prostate-rsem-count-gtex.txt',stringsAsFactors = F)
 rownames_prostate=prostate$Hugo_Symbol
 prostate$Hugo_Symbol=NULL
@@ -1969,34 +1893,12 @@ rownames(prostate)=rownames_prostate
 prostate=apply(prostate, 2, function(x) x/sum(x)*1000000)
 
 
-# • Remove from normal samples outliers with high xCell ImmuneScore ----
+# Remove from normal samples outliers with high xCell ImmuneScore ----
 
-source("~/Documents/Pipelines/Utils/utils_RNA.R")
-c=readRDS('~/Dropbox (HuGeF)/Prostate_splicing/FOXA1/Paper/CellReports_211220/REVISION/DEFINITIVE/code/Rdata/gene_length.rds')
+source("sources/utils_RNA.R")
+c=readRDS('Rdata/gene_length.rds')
 
-# prad_normal_length=c$Length[match(rownames(prad_normal),c$gene_name)]
-# prad_normal_tpms = countToTpm2(prad_normal, prad_normal_length)
-# prad_normal_xcell=xCellAnalysis(prad_normal_tpms)
-# prad_normal_xcell=as.data.frame(t(prad_normal_xcell))
-# ggplot(prad_normal_xcell,aes(x=MicroenvironmentScore,y=ImmuneScore))+geom_point()+geom_smooth(method = 'lm')+stat_cor()+theme_bw()
-# pt=ggplot(prad_normal_xcell,aes(x=1,y=ImmuneScore))+geom_boxplot(notch = T)+geom_smooth(method = 'lm')+stat_cor()+theme_bw()+geom_jitter(size=0.5)+ggtitle('TCGA normal - Immune')
-# ptt=ggplot(prad_normal_xcell,aes(x=1,y=StromaScore))+geom_boxplot(notch = T)+geom_smooth(method = 'lm')+stat_cor()+theme_bw()+geom_jitter(size=0.5)+ggtitle('TCGA normal - Stroma')
-# dim(subset(prad_normal_xcell,ImmuneScore>0.05)) # 2 ok
-# prad_normal = prad_normal[,colnames(prad_normal)%in%rownames(subset(prad_normal_xcell,ImmuneScore<0.05))]
-# 
-# p1=ggplot(prad_normal_xcell,aes(y=MicroenvironmentScore,x=ImmuneScore))+geom_point()+geom_smooth(method = 'lm')+stat_cor()+theme_bw()
-# p2=ggplot(prad_normal_xcell,aes(y=MicroenvironmentScore,x=StromaScore))+geom_point()+geom_smooth(method = 'lm')+stat_cor()+theme_bw()
-# p3=ggplot(prad_normal_xcell,aes(y=MicroenvironmentScore,x=`Epithelial cells`))+geom_point()+geom_smooth(method = 'lm')+stat_cor()+theme_bw()
-# pdf(file=paste0('~/Dropbox (HuGeF)/Prostate_splicing/FOXA1/Paper/CellReports_211220/REVISION/original_figures/simulations/', "scatter_Immune_Stroma_Epithelial__TCGA_normal__WITH_OUTLIERS.pdf"), height=unit(4,'cm'), width=unit(12,'cm'), useDingbats = F)
-# grid.arrange(p1,p2,p3,ncol=3)
-# dev.off()
-# 
-# p1=ggplot(prad_normal_xcell[rownames(prad_normal_xcell)%in%colnames(prad_normal),],aes(y=MicroenvironmentScore,x=ImmuneScore))+geom_point()+geom_smooth(method = 'lm')+stat_cor()+theme_bw()
-# p2=ggplot(prad_normal_xcell[rownames(prad_normal_xcell)%in%colnames(prad_normal),],aes(y=MicroenvironmentScore,x=StromaScore))+geom_point()+geom_smooth(method = 'lm')+stat_cor()+theme_bw()
-# p3=ggplot(prad_normal_xcell[rownames(prad_normal_xcell)%in%colnames(prad_normal),],aes(y=MicroenvironmentScore,x=`Epithelial cells`))+geom_point()+geom_smooth(method = 'lm')+stat_cor()+theme_bw()
-# pdf(file=paste0('~/Dropbox (HuGeF)/Prostate_splicing/FOXA1/Paper/CellReports_211220/REVISION/original_figures/simulations/', "scatter_Immune_Stroma_Epithelial__TCGA_normal__WITHOUT_OUTLIERS.pdf"), height=unit(4,'cm'), width=unit(12,'cm'), useDingbats = F)
-# grid.arrange(p1,p2,p3,ncol=3)
-# dev.off()
+library(xCell)
 
 prostate_length=c$Length[match(rownames(prostate),c$gene_name)]
 prostate_tpms = countToTpm2(prostate, prostate_length)
@@ -2015,14 +1917,13 @@ prad_xcell=as.data.frame(t(prad_xcell))
 saveRDS(prad_xcell,'Rdata/xCell_primary_PC_RNAseqDB.rds')
 
 
-# • Select highly pure TCGA tumor samples ----
+#  Select highly pure TCGA tumor samples ----
 
 prad_pure = prad[,unique(subset(rna,purity>=0.9)$Tumor_Sample_Barcode)[which(unique(subset(rna,purity>=0.9)$Tumor_Sample_Barcode)%in%colnames(prad))]]
 
 
-# • GLMs and Differential expression with bootstrapping ----
+#  GLMs and Differential expression with bootstrapping ----
 
-# ∞∞∞ TCGA - compute differentially expressed SRPs ----
 
 c=readRDS("Rdata/gene_length.rds")
 c$gene_name[which(c$gene_name=='SNU13')]='NHP2L1'
@@ -2114,7 +2015,7 @@ for (n in 1:100) {
     
     for (i in c('gtex')) {
       
-      pl = readRDS("/Volumes/LaCie/FOXA1_repo/FOXA1/Rdata/KEGG_Genetic_information_process.GSECA.200105.rds")
+      pl = readRDS("Rdata/KEGG_Genetic_information_process.GSECA.200105.rds")
       
       if (i=='tcga') {
         rna_sub=simulated_tumors_tcga_tpms
@@ -2262,7 +2163,7 @@ library(RColorBrewer)
 library(wesanderson)
 library(ggsci)
 
-ugo=load('~/Dropbox (HuGeF)/Prostate_splicing/FOXA1/Paper/CellReports_211220/REVISION/Rdata/in_silico_contamination_with_100_bootstrapping_Lists.Rdata')
+ugo=load('Rdata/in_silico_contamination_with_100_bootstrapping_Lists.Rdata')
 
 tmp=do.call(rbind,relaimpo_gtex_list)
 for(i in 1:100) {
@@ -2286,8 +2187,8 @@ p2=ggplot(to_plot,aes(x=(1-cont_perc),y=value,col=variable))+geom_line()+theme_b
 p22=ggplot(to_plot,aes(x=(1-cont_perc),y=value,col=variable))+geom_line()+theme_bw()+geom_point()+geom_errorbar(mapping = aes(ymin = (value-sd), ymax = (value+sd)), width=0.05)+ggtitle('GTEX')+ylab('% of R2')+xlab('purity')+
   scale_color_jco()
 
-pdf(file=paste0("summary_glms_with_100_bootstrap.pdf"), height=unit(5,'cm'), width=unit(12,'cm'), useDingbats = F)
-grid.arrange(p2,p22,ncol=2)
+pdf(paste0(FIG_DIR2, file="summary_glms_with_100_bootstrap.pdf"), height=unit(5,'cm'), width=unit(12,'cm'), useDingbats = F)
+print(grid.arrange(p2,p22,ncol=2))
 dev.off()
 
 
@@ -2352,11 +2253,11 @@ n_DE_SRGs_sds=rowSds(m)
 to_plot=as.data.frame(cbind(n_DE_SRGs_means,n_DE_SRGs_sds))
 colnames(to_plot)=c('mean','sd')
 to_plot$cont_perc=as.numeric(rownames(to_plot))
-pdf(file=paste0("barplot_N_DE_SRGs_annotation_GTEX_with_100_bootstrap_with_errorbar.pdf"), height=unit(4,'cm'), width=unit(5,'cm'), useDingbats = F)
-ggplot(to_plot,aes(x=(1-cont_perc),y=mean))+geom_col()+theme_bw()+geom_errorbar(mapping = aes(ymin = (mean-sd/10), ymax = (mean+sd/10)), width=0.05)
+pdf(paste0(FIG_DIR2, file="barplot_N_DE_SRGs_annotation_GTEX_with_100_bootstrap_with_errorbar.pdf"), height=unit(4,'cm'), width=unit(5,'cm'), useDingbats = F)
+print(ggplot(to_plot,aes(x=(1-cont_perc),y=mean))+geom_col()+theme_bw()+geom_errorbar(mapping = aes(ymin = (mean-sd/10), ymax = (mean+sd/10)), width=0.05))
 dev.off()
-pdf(file=paste0("barplot_N_DE_SRGs_annotation_GTEX_with_100_bootstrap_with_errorbar_SD.pdf"), height=unit(4,'cm'), width=unit(5,'cm'), useDingbats = F)
-ggplot(to_plot,aes(x=(1-cont_perc),y=mean))+geom_col()+theme_bw()+geom_errorbar(mapping = aes(ymin = (mean-sd), ymax = (mean+sd)), width=0.05)
+pdf(paste0(FIG_DIR2, file="barplot_N_DE_SRGs_annotation_GTEX_with_100_bootstrap_with_errorbar_SD.pdf"), height=unit(4,'cm'), width=unit(5,'cm'), useDingbats = F)
+print(ggplot(to_plot,aes(x=(1-cont_perc),y=mean))+geom_col()+theme_bw()+geom_errorbar(mapping = aes(ymin = (mean-sd), ymax = (mean+sd)), width=0.05))
 dev.off()
 
 
@@ -2367,8 +2268,9 @@ prova5_red = prova5[rownames(heat_red),]
 m = as.matrix(t(prova5_red[,!colnames(prova5_red)=='symbol']))
 ha2_redB = HeatmapAnnotation(number_of_times_DE = anno_barplot(colMeans(m), height = unit(4, "cm")))
 
-pdf(file=paste0("DE_SRGs_heatmap_GTEX_with_100_bootstrap__anno_barplots.pdf"), height=unit(8,'cm'), width=unit(26,'cm'), useDingbats = F)
+pdf(paste0(FIG_DIR2, file="DE_SRGs_heatmap_GTEX_with_100_bootstrap__anno_barplots.pdf"), height=unit(8,'cm'), width=unit(26,'cm'), useDingbats = F)
 ht=draw(Heatmap(t(heat_red),cluster_rows = F,right_annotation = haB,top_annotation = ha2_redB, col = col_fun, rect_gp = gpar(col = "darkgrey", lwd = 0.5)))
+print(ht)
 dev.off()
 
 
@@ -2384,11 +2286,11 @@ ord=column_order(ht)
 to_plot=to_plot[rev(ord),]
 to_plot$SRG=factor(to_plot$SRG,levels=to_plot$SRG)
 
-pdf(file=paste0("barplot_N_times_DE_annotation_GTEX_with_100_bootstrap_with_errorbar.pdf"), height=unit(12,'cm'), width=unit(4,'cm'), useDingbats = F)
-ggplot(to_plot,aes(y=(SRG),x=mean))+geom_col()+theme_bw()+geom_errorbar(mapping = aes(xmin = (mean-sd/10), xmax = (mean+sd/10)), height=0.05)
+pdf(paste0(FIG_DIR2, file="barplot_N_times_DE_annotation_GTEX_with_100_bootstrap_with_errorbar.pdf"), height=unit(12,'cm'), width=unit(4,'cm'), useDingbats = F)
+print(ggplot(to_plot,aes(y=(SRG),x=mean))+geom_col()+theme_bw()+geom_errorbar(mapping = aes(xmin = (mean-sd/10), xmax = (mean+sd/10)), height=0.05))
 dev.off()
-pdf(file=paste0("barplot_N_times_DE_annotation_GTEX_with_100_bootstrap_with_errorbar_SD.pdf"), height=unit(12,'cm'), width=unit(4,'cm'), useDingbats = F)
-ggplot(to_plot,aes(y=(SRG),x=mean))+geom_col()+theme_bw()+geom_errorbar(mapping = aes(xmin = (mean-sd), xmax = (mean+sd)), height=0.05)
+pdf(paste0(FIG_DIR2, file="barplot_N_times_DE_annotation_GTEX_with_100_bootstrap_with_errorbar_SD.pdf"), height=unit(12,'cm'), width=unit(4,'cm'), useDingbats = F)
+print(ggplot(to_plot,aes(y=(SRG),x=mean))+geom_col()+theme_bw()+geom_errorbar(mapping = aes(xmin = (mean-sd), xmax = (mean+sd)), height=0.05))
 dev.off()
 
 
@@ -2438,7 +2340,7 @@ p3=ggplot()+geom_point(subset(prad_tpms,symbol=='FOXA1'),mapping=aes(x=TPM,y=Epi
 p4=ggplot(subset(prad_tpms,symbol=='FOXA1'),aes(x=FOXA1_overexpression,y=ImmuneScore))+geom_boxplot(notch = T)+stat_compare_means()+theme_bw()
 p5=ggplot(subset(prad_tpms,symbol=='FOXA1'),aes(x=FOXA1_overexpression,y=StromaScore))+geom_boxplot(notch = T)+stat_compare_means()+theme_bw()
 p6=ggplot(subset(prad_tpms,symbol=='FOXA1'),aes(x=FOXA1_overexpression,y=EpithelialCells))+geom_boxplot(notch = T)+stat_compare_means()+theme_bw()
-pdf(file=paste0("XCELL_TCGA_scatter_and_boxplot_scores_vs_FOXA1__from_RNAseqDB.pdf"), height=unit(8,'cm'), width=unit(12,'cm'), useDingbats = F)
+pdf(paste0(FIG_DIR, file="XCELL_TCGA_scatter_and_boxplot_scores_vs_FOXA1__from_RNAseqDB.pdf"), height=unit(8,'cm'), width=unit(12,'cm'), useDingbats = F)
 grid.arrange(p1,p2,p3,p4,p5,p6,ncol=3)
 dev.off()
 
@@ -2447,7 +2349,7 @@ dev.off()
 
 # GLM STRATA ON XCELL SCORES  SELECTING THE MOST "CONTAMINATED" SAMPLES ----
 
-pl = readRDS("/Volumes/LaCie/FOXA1_repo/FOXA1/Rdata/KEGG_Genetic_information_process.GSECA.200105.rds")
+pl = readRDS("Rdata/KEGG_Genetic_information_process.GSECA.200105.rds")
 
 qt=quantile(subset(prad_tpms,symbol=='FOXA1')$StromaScore,seq(0,1,0.05))
 prad_tpms$StromaScore_HighRest = 'rest'
@@ -2503,7 +2405,7 @@ for(i in c('rest','high')) {
   
   set.seed(30580)
   
-  pdf(file=paste0("SRP_TF_primary_glm_coeff_NEW__StromaScore_",i,"__from_RNAseqDB.pdf"), height=unit(3,'cm'), width=unit(3, 'cm'), useDingbats = F )
+  pdf(paste0(FIG_DIR, file="SRP_TF_primary_glm_coeff_NEW__StromaScore_",i,"__from_RNAseqDB.pdf"), height=unit(3,'cm'), width=unit(3, 'cm'), useDingbats = F )
   fit.p = glm(data=x, SRP~FOXA1+MYC+AR+ERG ); coe1 = get_coef(fit.p)
   dev.off()
   
@@ -2511,7 +2413,7 @@ for(i in c('rest','high')) {
   boot <- boot.relimp(fit.p, b = 1000, type = c("lmg"), rank = TRUE, diff = TRUE, rela = TRUE)
   b = booteval.relimp(boot,sort=TRUE) # print result
   
-  pdf(file=paste0("RelImpo_glm_primary__StromaScore_",i,"__from_RNAseqDB.pdf"), height=unit(5,'cm'), width=unit(5,'cm'), useDingbats = F)
+  pdf(paste0(FIG_DIR, file="RelImpo_glm_primary__StromaScore_",i,"__from_RNAseqDB.pdf"), height=unit(5,'cm'), width=unit(5,'cm'), useDingbats = F)
   par(las=2)
   plot(b)
   dev.off()
@@ -2558,7 +2460,7 @@ for(i in c('rest','high')) {
   
   set.seed(30580)
   
-  pdf(file=paste0("SRP_TF_primary_glm_coeff_NEW__EpithelialCellsScore_",i,"__from_RNAseqDB.pdf"), height=unit(3,'cm'), width=unit(3, 'cm'), useDingbats = F )
+  pdf(paste0(FIG_DIR, file="SRP_TF_primary_glm_coeff_NEW__EpithelialCellsScore_",i,"__from_RNAseqDB.pdf"), height=unit(3,'cm'), width=unit(3, 'cm'), useDingbats = F )
   fit.p = glm(data=x, SRP~FOXA1+MYC+AR+ERG ); coe1 = get_coef(fit.p)
   dev.off()
   
@@ -2566,7 +2468,7 @@ for(i in c('rest','high')) {
   boot <- boot.relimp(fit.p, b = 1000, type = c("lmg"), rank = TRUE, diff = TRUE, rela = TRUE)
   b = booteval.relimp(boot,sort=TRUE) # print result
   
-  pdf(file=paste0("RelImpo_glm_primary__EpithelialCellsScore_",i,"__from_RNAseqDB.pdf"), height=unit(5,'cm'), width=unit(5,'cm'), useDingbats = F)
+  pdf(paste0(FIG_DIR, file="RelImpo_glm_primary__EpithelialCellsScore_",i,"__from_RNAseqDB.pdf"), height=unit(5,'cm'), width=unit(5,'cm'), useDingbats = F)
   par(las=2)
   plot(b)
   dev.off()
@@ -2613,7 +2515,7 @@ for(i in c('rest','high')) {
   
   set.seed(30580)
   
-  pdf(file=paste0("SRP_TF_primary_glm_coeff_NEW__ImmuneScore_",i,"__from_RNAseqDB.pdf"), height=unit(3,'cm'), width=unit(3, 'cm'), useDingbats = F )
+  pdf(file=paste0(FIG_DIR, "SRP_TF_primary_glm_coeff_NEW__ImmuneScore_",i,"__from_RNAseqDB.pdf"), height=unit(3,'cm'), width=unit(3, 'cm'), useDingbats = F )
   fit.p = glm(data=x, SRP~FOXA1+MYC+AR+ERG ); coe1 = get_coef(fit.p)
   dev.off()
   
@@ -2621,8 +2523,48 @@ for(i in c('rest','high')) {
   boot <- boot.relimp(fit.p, b = 1000, type = c("lmg"), rank = TRUE, diff = TRUE, rela = TRUE)
   b = booteval.relimp(boot,sort=TRUE) # print result
   
-  pdf(file=paste0("RelImpo_glm_primary__ImmuneScore_",i,"__from_RNAseqDB.pdf"), height=unit(5,'cm'), width=unit(5,'cm'), useDingbats = F)
+  pdf(file=paste0(FIG_DIR, "RelImpo_glm_primary__ImmuneScore_",i,"__from_RNAseqDB.pdf"), height=unit(5,'cm'), width=unit(5,'cm'), useDingbats = F)
   par(las=2)
   plot(b)
   dev.off()
 }
+
+
+
+
+
+
+# Merge high and low purity ORA results ----
+
+
+
+to_plot=readRDS(paste0('Rdata/ORA_all_event_types_TCGA_KEGG_186_', 'high', '.rds'))
+
+to_plot_high=to_plot
+to_plot_high$purity='high'
+
+to_plot=readRDS(paste0('Rdata/ORA_all_event_types_TCGA_KEGG_186_', 'low', '.rds'))
+
+to_plot_low=to_plot
+to_plot_low$purity='low'
+to_plot=rbind(to_plot_high,to_plot_low)
+
+to_plot=subset(to_plot,p.adjust<0.1)
+
+pdf(paste0(FIG_DIR, file='ORA_all_event_types_TCGA_KEGG_186__KEGG_186__HIGH_AND_LOW_PURITY_MERGED.pdf'), height = unit(4,'cm'), width = unit(8, 'cm'), useDingbats = F)
+to_plot2=to_plot[order(to_plot$p.adjust,decreasing = T),]
+to_plot2$ID=factor(to_plot2$ID,levels=unique(to_plot2$ID))
+ggplot( to_plot2,
+        aes(x= parse_ratio(GeneRatio), y= ID)) + 
+  geom_segment(aes(xend=0, yend = Description)) +
+  geom_point(aes(color=factor(p.adjust<=.25), fill=p.adjust, size = Count, shape=purity)) +
+  geom_text(aes(label=rank)) +
+  scale_shape_manual(values=c(21,24))+
+  scale_color_manual(values=c('transparent','black'))+
+  scale_fill_viridis_c(option = 'D',guide=guide_colorbar(reverse=T, draw.llim = T), direction = -1)+#,
+  scale_size_continuous(range=c(2, 10)) +
+  theme_minimal() + xlab("Gene Ratio") +ylab(NULL)+
+  facet_wrap(~type, nrow=1)
+dev.off()
+
+

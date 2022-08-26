@@ -1,13 +1,14 @@
 # ••••••••••••••••••••••••••••••••••••••••• ----
 # *** Differential expression analysis ----
 
-
+options(stringsAsFactors=F)
 # ******************** ----
 # ******************** DEA in primary and metastatic samples ----
 # ******************** ----
-
-
-source("Scripts/config.R")
+FIG_DIR=# define figure directory
+  
+  
+source("sources/config.R")
 
 # ∞∞∞ EDGR ======================
 
@@ -139,8 +140,7 @@ myc.deout2 <- get_DESEQ(counts = prad.rwc, samples = c(case,cntr),
                         cond = c(rep(pheno[1],pheno_nn[1]),rep(pheno[2],pheno_nn[2])),
                         ctrl = pheno[2]) # , tlen = ptlen
 
-save(myc.deout2, file="Rdata/PRAD_DESEQ_FOXA1_75th.Rdata")
-
+save(myc.deout2, file="Rdata/PRAD_DESEQ_FOXA1_75th.Rdata") # manca
 
 
 
@@ -149,7 +149,7 @@ save(myc.deout2, file="Rdata/PRAD_DESEQ_FOXA1_75th.Rdata")
 library(clusterProfiler)
 library(org.Hs.eg.db)
 
-pl = readRDS('Rdata/KEGG_Genetic_information_process.GSECA.200105.rds')
+pl = readRDS('Rdata/KEGG_Genetic_information_process.GSECA.200105.rds') 
 
 
 # EDGER ----
@@ -274,7 +274,7 @@ samples_boot = list()
 set.seed(30580) 
 for(i in 1:10000) samples_boot[[i]]=sample(pat$sample, n_foxa1_he) 
 
-save(samples_boot, r2, SRPs, file="Rdata/RBP_simulations.montecarlo_TCGA__FOXA1_HE.Rdata") 
+save(samples_boot, r2, SRPs, file="Rdata/RBP_simulations.montecarlo_TCGA__FOXA1_HE.Rdata") # manca
 
 
 # ∞∞∞ TCGA - simulations for empirical pvalue ----
@@ -282,7 +282,7 @@ save(samples_boot, r2, SRPs, file="Rdata/RBP_simulations.montecarlo_TCGA__FOXA1_
 library(snow, verbose=F)
 library(plyr)
 
-load('Rdata/RBP_simulations.montecarlo_TCGA__FOXA1_HE.Rdata')
+load('Rdata/RBP_simulations.montecarlo_TCGA__FOXA1_HE.Rdata') # manca
 
 simulazione=function(samples, ri, pl){
   ri$type="WT"
@@ -298,7 +298,7 @@ simulazione=function(samples, ri, pl){
 }
 
 
-nclust = 4
+nclust = 1
 print(nclust)
 
 clus <- makeCluster(nclust)
@@ -394,6 +394,7 @@ tc$se.wt  = subset(t, !FOXA1_overexpression)$se
 tc$delta = with(tc, TPM-TPM.wt)
 tc$L2R = log2(tc$median.TPM)-log2(tc$median.TPM.wt)
 tc$FC  = tc$median.TPM/tc$median.TPM.wt
+
 
 
 colnames(dataDEGs) = paste0("edger.", colnames(dataDEGs))
@@ -765,14 +766,14 @@ pm = pheatmap(sampleDistMatrix,
               clustering_distance_cols=sampleDists,
               col=colors)
 
-pdf(file='dist_VCAP.pdf', height = unit(3,'cm'), width = unit(3.5,'cm'), useDingbats = F )
+pdf(paste0(FIG_DIR, file='dist_VCAP.pdf'), height = unit(3,'cm'), width = unit(3.5,'cm'), useDingbats = F )
 print(pm)
 dev.off()
 
 pcaData <- DESeq2::plotPCA(vsd, intgroup=c("condition"), returnData=TRUE)
 percentVar <- round(100 * attr(pcaData, "percentVar"))
 
-pdf(file='deseq2_pca_VCAP.pdf', height = unit(3,'cm'), width = unit(3.5,'cm'), useDingbats = F )
+pdf(paste0(FIG_DIR,file='deseq2_pca_VCAP.pdf'), height = unit(3,'cm'), width = unit(3.5,'cm'), useDingbats = F )
 ggplot(pcaData, aes(PC1, PC2, color=condition)) +
   geom_point(size=3) + ggrepel::geom_label_repel(aes(label=name))+
   xlab(paste0("PC1: ",percentVar[1],"% variance")) +
@@ -780,7 +781,7 @@ ggplot(pcaData, aes(PC1, PC2, color=condition)) +
 dev.off()
 
 res=readRDS('Rdata/RNAseq_VCAP_deseq.rds')
-a=load('Rdata/NEW_differentially_expressed_SRPs.Rdata')
+a=load('/Volumes/MrDarcy/FOXA1/Rdata/NEW_differentially_expressed_SRPs.Rdata')
 
 res$gene_name = sapply(strsplit(rownames(res),'\\_'),'[[',1)
 
@@ -800,13 +801,12 @@ save(DEG_SRPs_18_common, DEG_SRPs_SU2C, DEG_SRPs_TCGA, file='Rdata/NEW_different
 
 # ******* PC3 ----
 
-
-
 c=readRDS('Rdata/Counts_wt_si_FOXA1_PC3_nextseq_novaseq.rds')
 
 count_matrix<-as.matrix(c[, 5:ncol(c)])
 
 saveRDS(count_matrix, "Rdata/Counts_wt_si_FOXA1_PC3_nextseq_novaseq_matrix.rds")
+
 
 # Init ####
 source("Rdata/utils_RNA.R")
@@ -878,7 +878,7 @@ saveRDS(t, "Rdata/TPM_wt_si_FOXA1_PC3_nextseq_novaseq.rds")
 # deseq =========
 
 
-c=readRDS("Rdata/Counts_wt_si_FOXA1_PC3_nextseq_novaseq.rds")
+c=readRDS("/Volumes/MrDarcy/FOXA1/Rdata/Counts_wt_si_FOXA1_PC3_nextseq_novaseq.rds")
 
 colnames(c) = gsub('pc3.','',colnames(c))
 rownames(c) = paste0(c$gene_name,'_', rownames(c))
@@ -914,7 +914,7 @@ pm = pheatmap(sampleDistMatrix,
               clustering_distance_cols=sampleDists,
               col=colors)
 
-pdf(file='dist_PC3_next_nova.pdf', height = unit(3,'cm'), width = unit(3.5,'cm'), useDingbats = F )
+pdf(paste0(FIG_DIR, file='dist_PC3_next_nova.pdf'), height = unit(3,'cm'), width = unit(3.5,'cm'), useDingbats = F )
 
 print(pm)
 dev.off()
@@ -923,7 +923,7 @@ dev.off()
 pcaData <- DESeq2::plotPCA(vsd, intgroup=c("condition"), returnData=TRUE)
 percentVar <- round(100 * attr(pcaData, "percentVar"))
 
-pdf(file='deseq2_pca_PC3_next_nova.pdf', height = unit(3,'cm'), width = unit(3.5,'cm'), useDingbats = F )
+pdf(paste0(FIG_DIR,file='deseq2_pca_PC3_next_nova.pdf'), height = unit(3,'cm'), width = unit(3.5,'cm'), useDingbats = F )
 
 
 ggplot(pcaData, aes(PC1, PC2, color=condition)) +

@@ -1,5 +1,7 @@
 # ••••••••••••••••••••••••••••••••••••••••• ----
 # *** Integrated analysis of TF binding in prostate cancer ----
+# To be noticed ... If you do not want to download data and intersect with promoters and enhancers and you want to use our intersections jump directly to "ORA with 186 KEGG"
+
 
 # • Download selected datasets from ChIP-Atlas (See Supplementary Table 2)  ----
 # One folder for each TF and cell line
@@ -305,40 +307,6 @@ system(sprintf("a=MYC_selected_lncap_hg19_chip_atlas_05_sorted_merged_in_ATAC.be
 
 # • Integrate analysis ----
 
-library(clusterProfiler)
-library(DOSE)
-library(igraph)
-library(org.Hs.eg.db)
-library(tidyverse)
-library(magrittr)
-
-
-format_enrichr = function(x,  org=org.Hs.eg.db, key="ENTREZID"){
-  y <- setReadable(x, OrgDb = org, keyType=key)
-  y <- mutate(y, richFactor = Count / as.numeric(sub("/\\d+", "", BgRatio)))
-  y <- mutate(y, FoldEnrichment = parse_ratio(GeneRatio) / parse_ratio(BgRatio))
-  y
-}
-
-format_enrichKEGG = function(x, kegg, org=org.Hs.eg.db, key="UNIPROT"){
-  y <- setReadable(x, OrgDb = org, keyType=key)
-  y <- mutate(y, richFactor = Count / as.numeric(sub("/\\d+", "", BgRatio)))
-  y <- mutate(y, FoldEnrichment = parse_ratio(GeneRatio) / parse_ratio(BgRatio))
-  y@result$kegg_id=gsub('hsa0','',y$ID)
-  y@result = left_join(y@result, kegg, by='kegg_id')
-  y
-}
-
-format_enrichr_msig = function(x, kegg, org=org.Hs.eg.db, key="ENTREZID"){
-  y <- setReadable(x, OrgDb = org, keyType=key)
-  y <- clusterProfiler::mutate(y, richFactor = Count / as.numeric(sub("/\\d+", "", BgRatio)))
-  y <- clusterProfiler::mutate(y, FoldEnrichment = parse_ratio(GeneRatio) / parse_ratio(BgRatio))
-  y@result$msigDB_158=y@result$Description
-  y@result$msigDB_158[y@result$msigDB_158=='SRG']='KEGG_SPLICEOSOME'
-  y@result = left_join(y@result, kegg, by='msigDB_158')
-  y
-}
-
 # LOADING DATA ===========
 
 kegg = read.csv('Tables/KEGG.csv')
@@ -393,24 +361,24 @@ enh = unique(enh)
 # AR ----
 
 # LNCaP %%%%%%%%%%
-prom=read.delim2("/LNCaP_AR/AR_selected_lncap_hg19_chip_atlas_05_sorted_merged_in_ATAC_promoters_2000_2000_in_ATAC.bed",header = F)
+prom=read.delim2("/Volumes/MrDarcy/FOXA1/Tables/chip_atac/AR/AR_selected_lncap_hg19_chip_atlas_05_sorted_merged_in_ATAC_promoters_2000_2000_in_ATAC.bed",header = F)
 prom$which = 'promoter'
 prom = prom[,c('which','V10')]
 colnames(prom)[2] = 'gene_name'
 prom = unique(prom)
-enh=read.delim2("LNCaP_AR/Intersection_AR_selected_lncap_hg19_chip_atlas_05_sorted_merged_in_ATAC_Ramanand_LNCAP_enhancers_associated_to_genes_in_ATAC_not_on_promoters_of_the_same_gene_only_active_genes_in_1Mb.bed",header = F)
+enh=read.delim2("/Volumes/MrDarcy/FOXA1/Tables/chip_atac/AR/Intersection_AR_selected_lncap_hg19_chip_atlas_05_sorted_merged_in_ATAC_Ramanand_LNCAP_enhancers_associated_to_genes_in_ATAC_not_on_promoters_of_the_same_gene_only_active_genes_in_1Mb.bed",header = F)
 enh$which = 'enhancer'
 enh = enh[,c('which','V7')]
 colnames(enh)[2] = 'gene_name'
 enh = unique(enh)
 
 # VCaP %%%%%%%%%%
-prom=read.delim2("/VCaP_AR/AR_selected_vcap_hg19_chip_atlas_05_sorted_merged_in_ATAC_promoters_2000_2000_in_ATAC.bed",header = F)
+prom=read.delim2("/Volumes/MrDarcy/FOXA1/Tables/chip_atac/AR/VCaP/AR_selected_vcap_hg19_chip_atlas_05_sorted_merged_in_ATAC_promoters_2000_2000_in_ATAC.bed",header = F)
 prom$which = 'promoter'
 prom = prom[,c('which','V10')]
 colnames(prom)[2] = 'gene_name'
 prom = unique(prom)
-enh=read.delim2("VCaP_AR/Intersection_AR_selected_vcap_hg19_chip_atlas_05_sorted_merged_in_ATAC_Ramanand_VCAP_enhancers_associated_to_genes_in_ATAC_not_on_promoters_of_the_same_gene_only_active_genes_in_1Mb.bed",header = F)
+enh=read.delim2("/Volumes/MrDarcy/FOXA1/Tables/chip_atac/AR/VCaP/Intersection_AR_selected_vcap_hg19_chip_atlas_05_sorted_merged_in_ATAC_Ramanand_VCAP_enhancers_associated_to_genes_in_ATAC_not_on_promoters_of_the_same_gene_only_active_genes_in_1Mb.bed",header = F)
 enh$which = 'enhancer'
 enh = enh[,c('which','V7')]
 colnames(enh)[2] = 'gene_name'
@@ -420,24 +388,24 @@ enh = unique(enh)
 # ERG ----
 
 # LNCaP %%%%%%%%%%
-prom=read.delim2("LNCaP_ERG/ERG_selected_lncap_hg19_chip_atlas_05_sorted_merged_in_ATAC_promoters_2000_2000_in_ATAC.bed",header = F)
+prom=read.delim2("/Volumes/MrDarcy/FOXA1/Tables/chip_atac/ERG/LNCaP/ERG_selected_lncap_hg19_chip_atlas_05_sorted_merged_in_ATAC_promoters_2000_2000_in_ATAC.bed",header = F)
 prom$which = 'promoter'
 prom = prom[,c('which','V10')]
 colnames(prom)[2] = 'gene_name'
 prom = unique(prom)
-enh=read.delim2("LNCaP_ERG/Intersection_ERG_selected_lncap_hg19_chip_atlas_05_sorted_merged_in_ATAC_Ramanand_LNCAP_enhancers_associated_to_genes_in_ATAC_not_on_promoters_of_the_same_gene_only_active_genes_in_1Mb.bed",header = F)
+enh=read.delim2("/Volumes/MrDarcy/FOXA1/Tables/chip_atac/ERG/LNCaP/Intersection_ERG_selected_lncap_hg19_chip_atlas_05_sorted_merged_in_ATAC_Ramanand_LNCAP_enhancers_associated_to_genes_in_ATAC_not_on_promoters_of_the_same_gene_only_active_genes_in_1Mb.bed",header = F)
 enh$which = 'enhancer'
 enh = enh[,c('which','V7')]
 colnames(enh)[2] = 'gene_name'
 enh = unique(enh)
 
 # VCaP %%%%%%%%%%
-prom=read.delim2("VCaP_ERG/ERG_selected_vcap_hg19_chip_atlas_05_sorted_merged_in_ATAC_promoters_2000_2000_in_ATAC.bed",header = F)
+prom=read.delim2("/Volumes/MrDarcy/FOXA1/Tables/chip_atac/ERG/VCaP/ERG_selected_vcap_hg19_chip_atlas_05_sorted_merged_in_ATAC_promoters_2000_2000_in_ATAC.bed",header = F)
 prom$which = 'promoter'
 prom = prom[,c('which','V10')]
 colnames(prom)[2] = 'gene_name'
 prom = unique(prom)
-enh=read.delim2("VCaP_ERG/Intersection_ERG_selected_vcap_hg19_chip_atlas_05_sorted_merged_in_ATAC_Ramanand_VCAP_enhancers_associated_to_genes_in_ATAC_not_on_promoters_of_the_same_gene_only_active_genes_in_1Mb.bed",header = F)
+enh=read.delim2("/Volumes/MrDarcy/FOXA1/Tables/chip_atac/ERG/VCaP/Intersection_ERG_selected_vcap_hg19_chip_atlas_05_sorted_merged_in_ATAC_Ramanand_VCAP_enhancers_associated_to_genes_in_ATAC_not_on_promoters_of_the_same_gene_only_active_genes_in_1Mb.bed",header = F)
 enh$which = 'enhancer'
 enh = enh[,c('which','V7')]
 colnames(enh)[2] = 'gene_name'
@@ -449,14 +417,67 @@ df = rbind.data.frame(cbind.data.frame('type'='P', SYMBOL=unique(prom$gene_name)
                       ,cbind.data.frame('type'='E', SYMBOL=unique(enh$gene_name)) )
 
 
+
 ids <- bitr(unique(df$SYMBOL), fromType="SYMBOL", toType=c("UNIPROT", "ENSEMBL", 'ENTREZID','ALIAS'), OrgDb="org.Hs.eg.db")
 df = left_join(df, ids, by='SYMBOL')
 
 
+saveRDS(df, "Rdata/FOXA1_LNCAP_ENHANCER_PROMOTER_FOR_ORA.rds")
+saveRDS(df, "Rdata/FOXA1_VCAP_ENHANCER_PROMOTER_FOR_ORA.rds")
+
+saveRDS(df, "Rdata/MYC_LNCAP_ENHANCER_PROMOTER_FOR_ORA.rds")
+
+saveRDS(df, "Rdata/AR_LNCAP_ENHANCER_PROMOTER_FOR_ORA.rds")
+saveRDS(df, "Rdata/AR_VCAP_ENHANCER_PROMOTER_FOR_ORA.rds")
+
+saveRDS(df, "Rdata/ERG_LNCAP_ENHANCER_PROMOTER_FOR_ORA.rds")
+saveRDS(df, "Rdata/ERG_VCAP_ENHANCER_PROMOTER_FOR_ORA.rds")
+
+
+
 
 # ORA with 186 KEGG ==================
+options(stringsAsFactors = F)
 
+library(tidyr)
+library(plyr)
+library(ggplot2)
+library(clusterProfiler)
+library(DOSE)
+library(igraph)
+library(org.Hs.eg.db)
+library(tidyverse)
+library(magrittr)
 library(msigdbr)
+
+
+FIG_DIR="" # define figure directory
+
+
+format_enrichr_msig = function(x, kegg, org=org.Hs.eg.db, key="ENTREZID"){
+  y <- setReadable(x, OrgDb = org, keyType=key)
+  y <- clusterProfiler::mutate(y, richFactor = Count / as.numeric(sub("/\\d+", "", BgRatio)))
+  y <- clusterProfiler::mutate(y, FoldEnrichment = parse_ratio(GeneRatio) / parse_ratio(BgRatio))
+  y@result$msigDB_158=y@result$Description
+  y@result$msigDB_158[y@result$msigDB_158=='SRG']='KEGG_SPLICEOSOME'
+  y@result = left_join(y@result, kegg, by='msigDB_158')
+  y
+}
+
+
+
+df=readRDS("Rdata/FOXA1_LNCAP_ENHANCER_PROMOTER_FOR_ORA.rds")
+df=readRDS("Rdata/FOXA1_LVCAP_ENHANCER_PROMOTER_FOR_ORA.rds")
+
+df=readRDS("Rdata/MYC_LNCAP_ENHANCER_PROMOTER_FOR_ORA.rds")
+
+df=readRDS("Rdata/AR_LNCAP_ENHANCER_PROMOTER_FOR_ORA.rds")
+df=readRDS("Rdata/AR_VCAP_ENHANCER_PROMOTER_FOR_ORA.rds")
+
+df=readRDS("Rdata/ERG_LNCAP_ENHANCER_PROMOTER_FOR_ORA.rds")
+df=readRDS("Rdata/ERG_VCAP_ENHANCER_PROMOTER_FOR_ORA.rds")
+
+
 k = msigdbr(species = "Homo sapiens", category = "C2", subcategory = 'KEGG')
 
 m_t2g <-  k%>%  dplyr::select(gs_name, entrez_gene)
@@ -511,13 +532,13 @@ write.csv(tmp_KEGG_186_VCaP[,c('ID','GeneRatio','BgRatio','pvalue','p.adjust','g
 
 
 
-# pdf(file='MYC_LNCAP_RHIE_promoters_ramanand_enhancers_ORA_in_ATAC_not_on_promoters_of_their_gene_only_active_genes_limited_exp_hallmark_1Mb__KEGG_186.pdf', height = unit(4,'cm'), width = unit(10, 'cm'), useDingbats = F)
-# pdf(file='AR_LNCAP_RHIE_promoters_ramanand_enhancers_ORA_in_ATAC_not_on_promoters_of_their_gene_only_active_genes_limited_exp_hallmark_1Mb__KEGG_186.pdf', height = unit(4,'cm'), width = unit(10, 'cm'), useDingbats = F)
-# pdf(file='AR_VCAP_RHIE_promoters_ramanand_enhancers_ORA_in_ATAC_not_on_promoters_of_their_gene_only_active_genes_limited_exp_hallmark_1Mb__KEGG_186.pdf', height = unit(4,'cm'), width = unit(10, 'cm'), useDingbats = F)
-# pdf(file='ERG_LNCAP_RHIE_promoters_ramanand_enhancers_ORA_in_ATAC_not_on_promoters_of_their_gene_only_active_genes_limited_exp_hallmark_1Mb__KEGG_186.pdf', height = unit(4,'cm'), width = unit(10, 'cm'), useDingbats = F)
-pdf(file='ERG_VCAP_RHIE_promoters_ramanand_enhancers_ORA_in_ATAC_not_on_promoters_of_their_gene_only_active_genes_limited_exp_hallmark_1Mb__KEGG_186.pdf', height = unit(4,'cm'), width = unit(10, 'cm'), useDingbats = F)
-# pdf(file='FOXA1_VCAP_RHIE_promoters_ramanand_enhancers_ORA_in_ATAC_not_on_promoters_of_their_gene_only_active_genes_limited_exp_hallmark_1Mb__KEGG_186.pdf', height = unit(4,'cm'), width = unit(10, 'cm'), useDingbats = F)
-# pdf(file='FOXA1_LNCAP_RHIE_promoters_ramanand_enhancers_ORA_in_ATAC_not_on_promoters_of_their_gene_only_active_genes_limited_exp_hallmark_1Mb__KEGG_186.pdf', height = unit(4,'cm'), width = unit(10, 'cm'), useDingbats = F)
+# pdf(paste0(FIG_DIR,file='MYC_LNCAP_RHIE_promoters_ramanand_enhancers_ORA_in_ATAC_not_on_promoters_of_their_gene_only_active_genes_limited_exp_hallmark_1Mb__KEGG_186.pdf'), height = unit(4,'cm'), width = unit(10, 'cm'), useDingbats = F)
+# pdf(paste0(FIG_DIR,file='AR_LNCAP_RHIE_promoters_ramanand_enhancers_ORA_in_ATAC_not_on_promoters_of_their_gene_only_active_genes_limited_exp_hallmark_1Mb__KEGG_186.pdf'), height = unit(4,'cm'), width = unit(10, 'cm'), useDingbats = F)
+# pdf(paste0(FIG_DIR,file='AR_VCAP_RHIE_promoters_ramanand_enhancers_ORA_in_ATAC_not_on_promoters_of_their_gene_only_active_genes_limited_exp_hallmark_1Mb__KEGG_186.pdf'), height = unit(4,'cm'), width = unit(10, 'cm'), useDingbats = F)
+# pdf(paste0(FIG_DIR,file='ERG_LNCAP_RHIE_promoters_ramanand_enhancers_ORA_in_ATAC_not_on_promoters_of_their_gene_only_active_genes_limited_exp_hallmark_1Mb__KEGG_186.pdf'), height = unit(4,'cm'), width = unit(10, 'cm'), useDingbats = F)
+pdf(paste0(FIG_DIR,file='ERG_VCAP_RHIE_promoters_ramanand_enhancers_ORA_in_ATAC_not_on_promoters_of_their_gene_only_active_genes_limited_exp_hallmark_1Mb__KEGG_186.pdf'), height = unit(4,'cm'), width = unit(10, 'cm'), useDingbats = F)
+# pdf(paste0(FIG_DIR,file='FOXA1_VCAP_RHIE_promoters_ramanand_enhancers_ORA_in_ATAC_not_on_promoters_of_their_gene_only_active_genes_limited_exp_hallmark_1Mb__KEGG_186.pdf'), height = unit(4,'cm'), width = unit(10, 'cm'), useDingbats = F)
+# pdf(paste0(FIG_DIR,file='FOXA1_LNCAP_RHIE_promoters_ramanand_enhancers_ORA_in_ATAC_not_on_promoters_of_their_gene_only_active_genes_limited_exp_hallmark_1Mb__KEGG_186.pdf'), height = unit(4,'cm'), width = unit(10, 'cm'), useDingbats = F)
 
 
 tmp=subset(tmp,p.adjust<0.1)

@@ -6,10 +6,14 @@
 # ******************** ----
 # ******************** Survival analysis on "cumulative" inclusion of silenced and enhanced poison and essential exons ----
 # ******************** ----
-
+options(stringsAsFactors = F)
 library(survminer)
 library(survival)
 library(plyr)
+
+
+FIG_DIR=""# Define figure folder
+
 
 df = readRDS("Rdata/survival_data_20190304.rds") 
 df$first_event_months = df$first_event/(365/12)
@@ -41,11 +45,11 @@ formula <- as.formula("Surv(time=first_event_months, event=DFS) ~ pois_ratio_lev
 cox <- coxph(formula, df)
 summary(cox)
 cox.zph(cox)
-pdf(file='Silenced_poison_svES_extreme_quartiles_forest_plot.pdf', width = 8, height = 6, useDingbats = F, onefile=F)
+pdf(paste0(FIG_DIR, file='Silenced_poison_svES_extreme_quartiles_forest_plot.pdf'), width = 8, height = 6, useDingbats = F, onefile=F)
 ggforest(cox)
 dev.off()
 gfit <- survfit(formula = as.formula("Surv(time = first_event_months, event = DFS) ~ pois_ratio_lev"), data = subset(df, first_event_months<110))
-pdf(file='Silenced_poison_svES_extreme_quartiles_kaplan_meier_Red_high_incl_Blue_low_incl.pdf', width = 9, height = 9, useDingbats = F, onefile=F)
+pdf(paste0(FIG_DIR, file='Silenced_poison_svES_extreme_quartiles_kaplan_meier_Red_high_incl_Blue_low_incl.pdf'), width = 9, height = 9, useDingbats = F, onefile=F)
 ggsurvplot(gfit, data = subset(df, first_event_months<110), risk.table = TRUE) 
 dev.off()
 
@@ -72,11 +76,11 @@ formula <- as.formula("Surv(time=first_event_months, event=DFS) ~ pois_ratio_lev
 cox <- coxph(formula, df)
 summary(cox)
 cox.zph(cox)
-pdf(file='Enhanced_poison_svES_extreme_quartiles_forest_plot.pdf', width = 8, height = 6, useDingbats = F, onefile=F)
+pdf(paste0(FIG_DIR, file='Enhanced_poison_svES_extreme_quartiles_forest_plot.pdf'), width = 8, height = 6, useDingbats = F, onefile=F)
 ggforest(cox)
 dev.off()
 gfit <- survfit(formula = as.formula("Surv(time = first_event_months, event = DFS) ~ pois_ratio_lev"), data = subset(df, first_event_months<110))
-pdf(file='Enhanced_poison_svES_extreme_quartiles_kaplan_meier_Red_high_incl_Blue_low_incl.pdf', width = 9, height = 9, useDingbats = F, onefile=F)
+pdf(paste0(FIG_DIR, file='Enhanced_poison_svES_extreme_quartiles_kaplan_meier_Red_high_incl_Blue_low_incl.pdf'), width = 9, height = 9, useDingbats = F, onefile=F)
 ggsurvplot(gfit, data = subset(df, first_event_months<110), risk.table = TRUE) 
 dev.off()
 
@@ -103,11 +107,11 @@ formula <- as.formula("Surv(time=first_event_months, event=DFS) ~ ess_ratio_lev"
 cox <- coxph(formula, df)
 summary(cox)
 cox.zph(cox)
-pdf(file='Silenced_essential_svES_extreme_quartiles_forest_plot.pdf', width = 8, height = 6, useDingbats = F, onefile=F)
+pdf(paste0(FIG_DIR, file='Silenced_essential_svES_extreme_quartiles_forest_plot.pdf'), width = 8, height = 6, useDingbats = F, onefile=F)
 ggforest(cox)
 dev.off()
 gfit <- survfit(formula = as.formula("Surv(time = first_event_months, event = DFS) ~ ess_ratio_lev"), data = subset(df, first_event_months<110))
-pdf(file='Silenced_essential_svES_extreme_quartiles_kaplan_meier_Red_high_incl_Blue_low_incl.pdf', width = 9, height = 9, useDingbats = F, onefile=F)
+pdf(paste0(FIG_DIR, file='Silenced_essential_svES_extreme_quartiles_kaplan_meier_Red_high_incl_Blue_low_incl.pdf'), width = 9, height = 9, useDingbats = F, onefile=F)
 ggsurvplot(gfit, data = subset(df, first_event_months<110), risk.table = TRUE)
 dev.off()
 
@@ -134,16 +138,13 @@ formula <- as.formula("Surv(time=first_event_months, event=DFS) ~ ess_ratio_lev"
 cox <- coxph(formula, df)
 summary(cox)
 cox.zph(cox)
-pdf(file='Enhanced_essential_svES_extreme_quartiles_forest_plot.pdf', width = 8, height = 6, useDingbats = F, onefile=F)
+pdf(paste0(FIG_DIR, file='Enhanced_essential_svES_extreme_quartiles_forest_plot.pdf'), width = 8, height = 6, useDingbats = F, onefile=F)
 ggforest(cox)
 dev.off()
 gfit <- survfit(formula = as.formula("Surv(time = first_event_months, event = DFS) ~ ess_ratio_lev"), data = subset(df, first_event_months<110))
-pdf(file='Enhanced_essential_svES_extreme_quartiles_kaplan_meier_Red_high_incl_Blue_low_incl.pdf', width = 9, height = 9, useDingbats = F, onefile=F)
+pdf(paste0(FIG_DIR, file='Enhanced_essential_svES_extreme_quartiles_kaplan_meier_Red_high_incl_Blue_low_incl.pdf'), width = 9, height = 9, useDingbats = F, onefile=F)
 ggsurvplot(gfit, data = subset(df, first_event_months<110), risk.table = TRUE)
 dev.off()
-
-
-
 
 
 
@@ -152,6 +153,8 @@ dev.off()
 # ******************** ----
 # ******************** Survival analysis for each poison or essential exon ----
 # ******************** ----
+
+#This part takes a lot of time to run ...its result is already included in the input file 
 
 library(survminer)
 library(survival)
@@ -164,17 +167,21 @@ ex$splice_type =  as.character(ex$splice_type)
 df = readRDS("Rdata/survival_data_20190304.rds")
 df$first_event_months = df$first_event/(365/12) 
 
-dexSIGN_pois_ess = subset(dexSIGN, (POISON & !ESSENTIAL) |
-                            (ESSENTIAL & !POISON) )
-
-surv_summary_pois_ess = matrix(nrow = 5, ncol = nrow(dexSIGN_pois_ess))
+surv_summary_pois_ess = matrix(nrow = 5, ncol = nrow(dexSIGN))
 dff = df
-for (i in 1:nrow(dexSIGN_pois_ess)) {
-  event = dexSIGN_pois_ess$event_id[i]
+
+ex$variable=as.character(ex$variable)
+
+ex$names=substr(ex$variable,1,12)
+
+for (i in 1:nrow(dexSIGN)) {
+  event = dexSIGN$event_id[i]
   incl = subset(ex,as_id==event)$value
-  names(incl) = substr(subset(ex,as_id==event)$variable,1,12)
+  names(incl) = subset(ex,as_id==event)$names
   
   qt=quantile(incl)
+  
+  if(!qt['75%']==qt['25%']){
   incl2 = rep(NA, length(incl))
   names(incl2)=names(incl)
   incl2[names(incl[incl>=qt['75%']])] = 'HI'
@@ -198,15 +205,21 @@ for (i in 1:nrow(dexSIGN_pois_ess)) {
   surv_summary_pois_ess[4,i] = tmp$conf.int[3]
   surv_summary_pois_ess[5,i] = tmp$conf.int[4]
   
+ 
+  }
   dff$tmp = NULL
-  
   print(i)
+ 
 }
 colnames(surv_summary_pois_ess) = dexSIGN_pois_ess$event_id
 rownames(surv_summary_pois_ess) = c('logrank_pvalue','hazard_ratio','prop_ass_pvalue','lower_CI','upper_CI')
 
 
+dexSIGN$hazard_ratio=surv_summary_pois_ess[2,match(dexSIGN$event_id, colnames(surv_summary_pois_ess))]
+dexSIGN$logrank_pval=surv_summary_pois_ess[1,match(dexSIGN$event_id, colnames(surv_summary_pois_ess))]
+dexSIGN$logrank_FDR=p.adjust(dexSIGN$logrank_pval,method = 'fdr')
 
+saveRDS(dexSIGN, "Rdata/dexSIGN_EXON_SKIPPING_only_with_pfam_and_NMD_FOXA1_HE.rds")
 
 
 # ******************** ----
@@ -276,18 +289,20 @@ fit = glm(data=DFF, formula = formula ); coe = get_coef(fit)
 coe$symbol = dexSIGN_pois_ess$symbol[match(coe$g,dexSIGN_pois_ess$event_id)]
 coe$code = paste0(sapply(strsplit(as.character(coe$g),'_'),'[',3),'_',coe$symbol)
 coe$code = factor(coe$code,levels = coe$code)
-pdf(file='FOXA1_surv_sign_FDR_pois_ess_glm_coeff__FOXA1_25_75__Harmful_events_only.pdf', width = 5, height = 6, useDingbats = F, onefile=F)
+pdf(paste0(FIG_DIR, file='FOXA1_surv_sign_FDR_pois_ess_glm_coeff__FOXA1_25_75__Harmful_events_only.pdf'), width = 5, height = 6, useDingbats = F, onefile=F)
 ggplot(coe, aes(x=g, y=coe, fill = coe, size=pval<0.05) )+
   geom_bar(stat='identity',color='black')+theme_bw()+coord_flip()+scale_fill_gradient2(midpoint=0, low="blue", mid="white", high="red")+
   scale_size_manual(values = c(0,1))
 dev.off()
 
 set.seed(30580)
+
+library(relaimpo)
 boot <- boot.relimp(fit
                     , b = 1000, type = c("lmg"), rank = TRUE, diff = TRUE, rela = TRUE)
 b = booteval.relimp(boot,sort=TRUE) # print result
 
-pdf(file='RelImpo_glm_FOXA1_surv_sign_FDR_pois_ess__FOXA1_25_75__Harmful_events_only.pdf', width = 5, height = 5, useDingbats = F, onefile=F)
+pdf(paste0(FIG_DIR, file='RelImpo_glm_FOXA1_surv_sign_FDR_pois_ess__FOXA1_25_75__Harmful_events_only.pdf'), width = 5, height = 5, useDingbats = F, onefile=F)
 par(las=2)
 plot(b)
 dev.off()
@@ -336,7 +351,7 @@ colnames(outlierMatrix_survSIGN) = substr(colnames(outlierMatrix_survSIGN),1,12)
 
 
 df = readRDS("Rdata/survival_data_20190304.rds")
-df$first_event_months = df$first_event/(365/12) # problema delgi NA risolto
+df$first_event_months = df$first_event/(365/12) 
 
 df2 = df
 
@@ -383,7 +398,7 @@ ggsurvlist <- list(
 
 # Arrange and save into pdf file
 res <- arrange_ggsurvplots(ggsurvlist, print = FALSE, ncol = 2, nrow = 3)
-ggsave("Figures/kaplan_meyer_all_harmful_events.pdf", res, height = 30, width = 21)
+ggsave(paste0(FIG_DIR, "/kaplan_meyer_all_harmful_events.pdf"), res, height = 30, width = 21)
 
 
 
@@ -407,11 +422,11 @@ tmp$sctest[3]
 tmp$coefficients[2]
 tmp = cox.zph(cox)
 tmp$table[3]
-pdf(file = '~/Dropbox (HuGeF)/Prostate_splicing/FOXA1/Paper/CellReports_211220/REVISION/original_figures/FLNA_survival_optimal_cutpoint_strata.pdf',width = unit(6,'cm'),height = unit(4,'cm'))
+pdf(paste0(FIG_DIR, file = 'FLNA_survival_optimal_cutpoint_strata.pdf'),width = unit(6,'cm'),height = unit(4,'cm'))
 ggforest(cox)
 dev.off()
 gfit <- survfit(formula = as.formula("Surv(time = first_event_months, event = DFS) ~ FLNA_ex30_discr"), data = subset(df2, first_event_months<110))
-pdf(file = '~/Dropbox (HuGeF)/Prostate_splicing/FOXA1/Paper/CellReports_211220/REVISION/original_figures/FLNA_survival_optimal_cutpoint_strata_Kaplan.pdf',width = unit(6,'cm'),height = unit(6,'cm'))
+pdf(paste0(FIG_DIR, file = 'FLNA_survival_optimal_cutpoint_strata_Kaplan.pdf'),width = unit(6,'cm'),height = unit(6,'cm'))
 ggsurvplot(gfit, data = subset(df2, first_event_months<110), risk.table = TRUE)
 dev.off()
 
@@ -462,7 +477,7 @@ fisher.test(to_test)
 #   2.688679
 
 
-pdf(file = '~/Dropbox (HuGeF)/Prostate_splicing/FOXA1/Paper/CellReports_211220/REVISION/original_figures/FLNA_inclusion_VS_FOXA1_expression__optimal_cutpoint.pdf',width = unit(24,'cm'),height = unit(6,'cm'))
+pdf(paste0(FIG_DIR, file = 'FLNA_inclusion_VS_FOXA1_expression__optimal_cutpoint.pdf'),width = unit(24,'cm'),height = unit(6,'cm'))
 grid.arrange(p1,p2,p3,ncol=3)
 dev.off()
 
@@ -476,11 +491,11 @@ tmp$sctest[3]
 tmp$coefficients[2]
 tmp = cox.zph(cox)
 tmp$table[3]
-pdf(file = '~/Dropbox (HuGeF)/Prostate_splicing/FOXA1/Paper/CellReports_211220/REVISION/original_figures/FLNA_survival_optimal_cutpoint_strata_VS_FOXA1.pdf',width = unit(6,'cm'),height = unit(4,'cm'))
+pdf(paste0(FIG_DIR, file = 'FLNA_survival_optimal_cutpoint_strata_VS_FOXA1.pdf'),width = unit(6,'cm'),height = unit(4,'cm'))
 ggforest(cox)
 dev.off()
 gfit <- survfit(formula = as.formula("Surv(time = first_event_months, event = DFS) ~ key"), data = subset(df2, first_event_months<110))
-pdf(file = '~/Dropbox (HuGeF)/Prostate_splicing/FOXA1/Paper/CellReports_211220/REVISION/original_figures/FLNA_survival_optimal_cutpoint_strata_VS_FOXA1_Kaplan.pdf',width = unit(6,'cm'),height = unit(6,'cm'))
+pdf(paste0(FIG_DIR, file = 'FLNA_survival_optimal_cutpoint_strata_VS_FOXA1_Kaplan.pdf'),width = unit(6,'cm'),height = unit(6,'cm'))
 ggsurvplot(gfit, data = subset(df2, first_event_months<110), risk.table = TRUE)
 dev.off()
 
@@ -489,11 +504,11 @@ dev.off()
 
 df2$SRSF1_expr=subset(rna,symbol=='SFRS1')$TPM[match(df2$bcr_patient_barcode,subset(rna,symbol=='SFRS1')$patient)]
 my_comparisons=list(c('FOXA1_0_FLNA_L','FOXA1_0_FLNA_U'),c('FOXA1_1_FLNA_L','FOXA1_1_FLNA_U'),c('FOXA1_0_FLNA_L','FOXA1_1_FLNA_L'),c('FOXA1_0_FLNA_U','FOXA1_1_FLNA_U'),c('FOXA1_0_FLNA_L','FOXA1_1_FLNA_U'))
-pdf(file = '~/Dropbox (HuGeF)/Prostate_splicing/FOXA1/Paper/CellReports_211220/REVISION/original_figures/Boxplot_SRSF1_expr_VS_FOXA1_and_FLNAex30.pdf',width = unit(8,'cm'),height = unit(6,'cm'))
+pdf(paste0(FIG_DIR, file = 'Boxplot_SRSF1_expr_VS_FOXA1_and_FLNAex30.pdf'),width = unit(8,'cm'),height = unit(6,'cm'))
 ggplot(df2,aes(x=key,y=SRSF1_expr,fill=FLNA_ex30_discr))+geom_boxplot(notch = T)+geom_jitter()+theme_bw()+stat_compare_means(comparisons = my_comparisons)
 dev.off()
 
-pdf(file = '~/Dropbox (HuGeF)/Prostate_splicing/FOXA1/Paper/CellReports_211220/REVISION/original_figures/Boxplot_SRSF1_expr_VS_FOXA1_and_FLNAex30__no_Jitter.pdf',width = unit(8,'cm'),height = unit(6,'cm'))
+pdf(paste0(FIG_DIR, file = 'Boxplot_SRSF1_expr_VS_FOXA1_and_FLNAex30__no_Jitter.pdf'),width = unit(8,'cm'),height = unit(6,'cm'))
 ggplot(df2,aes(x=key,y=SRSF1_expr,fill=FLNA_ex30_discr))+geom_boxplot(notch = T)+theme_bw()+stat_compare_means(comparisons = my_comparisons)
 dev.off()
 

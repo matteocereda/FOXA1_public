@@ -2,6 +2,15 @@
 # *** Cumulative event distribution of FOXA1-regulated events from RNAseq data of VCaP and PC3 cells ----
 
 
+library(ggplot2)
+library(gridExtra)
+repo = '/Volumes/Prule/repo/FOXA1_public/'
+FIG_DIR = '~/Downloads/FOXA1/Figure2/'
+setwd(repo)
+system(paste0('mkdir ', FIG_DIR))
+
+
+
 pc3=readRDS('Rdata/Whippet_PC3_nextseq_novaseq_filter_0_2.rds')
 pc3=subset(pc3,!Type%in%c('TE','TS'))
 pc3=subset(pc3,STRINGENT)
@@ -14,7 +23,6 @@ vcap=subset(vcap,!Complexity=='K0')
 
 
 # PC3 ----
-
 dexSIGN=pc3
 
 dexSIGN$overall.mean = (dexSIGN$Psi_A+dexSIGN$Psi_B)/2
@@ -81,14 +89,13 @@ p_vcap_counts=ggplot(res_df,aes(x=overall.mean.psi,y=cum_counts,col=type))+geom_
 res_df_vcap_true = res_df
 
 
-pdf(file = 'cumulative_plots_WHIPPET.pdf',width = unit(10,'cm'),height = unit(6,'cm'))
+pdf(file = paste0(FIG_DIR, 'cumulative_plots_WHIPPET.pdf'),width = unit(10,'cm'),height = unit(6,'cm'))
 grid.arrange(p_vcap,p_pc3,p_vcap_counts,p_pc3_counts,ncol=2)
 dev.off()
 
 
 
 # NULL MODEL ----
-
 set.seed(8890)
 
 for (i in 1:100) {
@@ -245,7 +252,7 @@ p_pc3_compl = ggplot() +
   geom_line(data=to_plot_sil, mapping = aes(x=overall.mean.psi, y=mean_c), linetype = "dashed", col=rgb(18/255,0,124/255)) + ylab("data")+theme_bw() + ggtitle('Delta sd')
 
 
-pdf(file = 'Whippet_RNAseq_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg.pdf',width = unit(10,'cm'),height = unit(3.5,'cm'))
+pdf(file = paste0(FIG_DIR, 'Whippet_RNAseq_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg.pdf'),width = unit(10,'cm'),height = unit(3.5,'cm'))
 grid.arrange(p_vcap_compl,p_pc3_compl,ncol=2)
 dev.off()
 
@@ -280,7 +287,7 @@ p_pc3_compl_2 = ggplot() +
   geom_line(data=to_plot_sil_TMP, mapping = aes(x=overall.mean.psi, y=mean_c), linetype = "dashed", col=rgb(18/255,0,124/255)) + ylab("data")+theme_bw() + ggtitle('Delta mean')
 
 
-pdf(file = 'Whippet_RNAseq_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_SPLITTED.pdf',width = unit(10,'cm'),height = unit(3.5,'cm'))
+pdf(file = paste0(FIG_DIR, 'Whippet_RNAseq_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_SPLITTED.pdf'),width = unit(10,'cm'),height = unit(3.5,'cm'))
 grid.arrange(p_vcap_compl_2,p_pc3_compl_2,ncol=2)
 dev.off()
 
@@ -443,12 +450,12 @@ p_pc3_compl_2_inv = ggplot() +
 
 
 
-pdf(file = 'Whippet_RNAseq_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_inverted.pdf',width = unit(10,'cm'),height = unit(3.5,'cm'))
+pdf(file = paste0(FIG_DIR, 'Whippet_RNAseq_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_inverted.pdf'),width = unit(10,'cm'),height = unit(3.5,'cm'))
 grid.arrange(p_vcap_compl_inv,p_pc3_compl_inv,ncol=2)
 dev.off()
 
 
-pdf(file = 'Whippet_RNAseq_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_SPLITTED_inverted.pdf',width = unit(10,'cm'),height = unit(3.5,'cm'))
+pdf(file =paste0(FIG_DIR, 'Whippet_RNAseq_cumulative_with_null_model__prob_05_for_delta_pos_and_delta_neg_SPLITTED_inverted.pdf'),width = unit(10,'cm'),height = unit(3.5,'cm'))
 grid.arrange(p_vcap_compl_2_inv,p_pc3_compl_2_inv,ncol=2)
 dev.off()
 

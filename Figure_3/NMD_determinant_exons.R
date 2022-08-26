@@ -16,6 +16,11 @@ library(plyr)
 library(clusterProfiler)
 library(msigdbr)
 
+repo = '/Volumes/Prule/repo/FOXA1_public/'
+FIG_DIR = '~/Downloads/FOXA1/Figure3/'
+setwd(repo)
+system(paste0('mkdir ', FIG_DIR))
+
 dexVAR=readRDS('Rdata/dexVAR_EXON_SKIPPING_only_with_pfam_and_NMD_FOXA1_HE.rds')
 
 
@@ -55,7 +60,7 @@ colnames(to_test_ess)=c('vASE','FOXA1_regulated')
 rownames(to_test_ess)=c('ESSENTIAL','OTHER')
 fisher.test(to_test_ess)
 
-pdf(file='pois_ess_enrichment_TCGA.pdf', height = unit(5,'cm'), width = unit(6, 'cm'), useDingbats = F)
+pdf(file=paste0(FIG_DIR, 'pois_ess_enrichment_TCGA.pdf'), height = unit(5,'cm'), width = unit(6, 'cm'), useDingbats = F)
 barplot(c(tab[2,2]/colSums(tab)[2],
           tab[2,1]/colSums(tab)[1],
           tab[1,1]/colSums(tab)[1],
@@ -85,7 +90,7 @@ colnames(to_test_ess)=c('vASE','FOXA1_regulated')
 rownames(to_test_ess)=c('ESSENTIAL','OTHER')
 fisher.test(to_test_ess)
 
-pdf(file='pois_ess_enrichment_in_SRG_only_TCGA.pdf', height = unit(5,'cm'), width = unit(6, 'cm'), useDingbats = F)
+pdf(file=paste0(FIG_DIR, 'pois_ess_enrichment_in_SRG_only_TCGA.pdf'), height = unit(5,'cm'), width = unit(6, 'cm'), useDingbats = F)
 barplot(c(tab[2,2]/colSums(tab)[2],
           tab[2,1]/colSums(tab)[1],
           tab[1,1]/colSums(tab)[1],
@@ -115,7 +120,7 @@ colnames(to_test_ess)=c('vASE','FOXA1_regulated')
 rownames(to_test_ess)=c('ESSENTIAL','OTHER')
 fisher.test(to_test_ess)
 
-pdf(file='pois_ess_ENHANCED_enrichment_in_SRG_only_TCGA.pdf', height = unit(5,'cm'), width = unit(6, 'cm'), useDingbats = F)
+pdf(file=paste0(FIG_DIR, 'pois_ess_ENHANCED_enrichment_in_SRG_only_TCGA.pdf'), height = unit(5,'cm'), width = unit(6, 'cm'), useDingbats = F)
 barplot(c(tab[2,2]/colSums(tab)[2],
           tab[2,1]/colSums(tab)[1],
           tab[1,1]/colSums(tab)[1],
@@ -145,7 +150,7 @@ colnames(to_test_ess)=c('vASE','FOXA1_regulated')
 rownames(to_test_ess)=c('ESSENTIAL','OTHER')
 fisher.test(to_test_ess)
 
-pdf(file='pois_ess_SILENCED_enrichment_in_SRG_only_TCGA.pdf', height = unit(5,'cm'), width = unit(6, 'cm'), useDingbats = F)
+pdf(file=paste0(FIG_DIR, 'pois_ess_SILENCED_enrichment_in_SRG_only_TCGA.pdf'), height = unit(5,'cm'), width = unit(6, 'cm'), useDingbats = F)
 barplot(c(tab[2,2]/colSums(tab)[2],
           tab[2,1]/colSums(tab)[1],
           tab[1,1]/colSums(tab)[1],
@@ -179,12 +184,12 @@ labels = as.data.frame(as.character(table(tmp$key)))
 labels$key = c('ESSENTIAL_TRUE','ESSENTIAL_FALSE','POISON_FALSE','POISON_TRUE')
 colnames(labels)[1]='counts'
 
-pdf(file='boxplot_poison_essential_FOXA1_svESs_and_varESs.pdf', width = 6, height = 7, useDingbats = F)
+pdf(file=paste0(FIG_DIR, 'boxplot_poison_essential_FOXA1_svESs_and_varESs.pdf'), width = 6, height = 7, useDingbats = F)
 ggplot(tmp,aes(y=delta.mean,x=key,fill=key))+geom_boxplot(notch=T)+stat_compare_means(comparisons = my_comparisons)+theme_bw()+
   geom_text(data = labels, aes(x = key, y = (-10), label = counts), size = 6)
 dev.off()
 
-pdf(file='boxplot_poison_essential_FOXA1_svESs_and_varESs_bis.pdf', width = 6, height = 7, useDingbats = F)
+pdf(file=paste0(FIG_DIR, 'boxplot_poison_essential_FOXA1_svESs_and_varESs_bis.pdf'), width = 6, height = 7, useDingbats = F)
 ggplot(tmp,aes(y=delta.mean,x=key,fill=key))+geom_boxplot(notch=T)+theme_bw()
 dev.off()
 
@@ -222,12 +227,12 @@ labels = as.data.frame(as.character(table(tmp$code)))
 labels$code = c('ESSENTIAL_TRUE','ESSENTIAL_FALSE','POISON_FALSE','POISON_TRUE')
 colnames(labels)[1]='counts'
 
-pdf(file='Boxplot_distribution_deltaPSI_GeneStructureTools_POISON_ESSENTIAL__PC3.pdf', width = 6, height = 7, useDingbats = F)
+pdf(file=paste0(FIG_DIR, 'Boxplot_distribution_deltaPSI_GeneStructureTools_POISON_ESSENTIAL__PC3.pdf'), width = 6, height = 7, useDingbats = F)
 ggplot(tmp,aes(y=DeltaPsi,x=code,fill=code))+geom_boxplot(notch=T)+stat_compare_means(comparisons = my_comparisons)+theme_bw()+
   geom_text(data = labels, aes(x = code, y = (-0.30), label = counts), size = 6)
 dev.off()
 
-pdf(file='Boxplot_distribution_deltaPSI_GeneStructureTools_POISON_ESSENTIAL__PC3_bis.pdf', width = 6, height = 7, useDingbats = F)
+pdf(file=paste0(FIG_DIR, 'Boxplot_distribution_deltaPSI_GeneStructureTools_POISON_ESSENTIAL__PC3_bis.pdf'), width = 6, height = 7, useDingbats = F)
 ggplot(tmp,aes(y=DeltaPsi,x=code,fill=code))+geom_boxplot(notch=T)+theme_bw()
 dev.off()
 
@@ -264,12 +269,12 @@ labels = as.data.frame(as.character(table(tmp$code)))
 labels$code = c('ESSENTIAL_TRUE','ESSENTIAL_FALSE','POISON_FALSE','POISON_TRUE')
 colnames(labels)[1]='counts'
 
-pdf(file='Boxplot_distribution_deltaPSI_GeneStructureTools_POISON_ESSENTIAL__VCaP.pdf', width = 6, height = 7, useDingbats = F)
+pdf(file=paste0(FIG_DIR, 'Boxplot_distribution_deltaPSI_GeneStructureTools_POISON_ESSENTIAL__VCaP.pdf'), width = 6, height = 7, useDingbats = F)
 ggplot(tmp,aes(y=DeltaPsi,x=code,fill=code))+geom_boxplot(notch=T)+stat_compare_means(comparisons = my_comparisons)+theme_bw()+
   geom_text(data = labels, aes(x = code, y = (-0.30), label = counts), size = 6)
 dev.off()
 
-pdf(file='Boxplot_distribution_deltaPSI_GeneStructureTools_POISON_ESSENTIAL__VCaP_bis.pdf', width = 6, height = 7, useDingbats = F)
+pdf(file=paste0(FIG_DIR, 'Boxplot_distribution_deltaPSI_GeneStructureTools_POISON_ESSENTIAL__VCaP_bis.pdf'), width = 6, height = 7, useDingbats = F)
 ggplot(tmp,aes(y=DeltaPsi,x=code,fill=code))+geom_boxplot(notch=T)+theme_bw()
 dev.off()
 

@@ -16,9 +16,12 @@ library(org.Hs.eg.db)
 library(gridExtra)
 library(rtracklayer)
 
-setwd("sources/Whippet_raw_files/PC3")
+repo = '/Volumes/Prule/repo/FOXA1_public/'
+FIG_DIR = '~/Downloads/FOXA1/Figure2/'
+setwd(paste0(repo, "sources/Whippet_raw_files/PC3"))
 
 anno=readRDS('../../../Rdata/gencode.v28.annotation.rds')
+
 
 # PSI ====
 
@@ -152,7 +155,7 @@ library(gridExtra)
 library(rtracklayer)
 library(ggExtra)
 
-setwd("code")
+setwd(repo)
 
 delta=readRDS("Rdata/Whippet_PC3_nextseq_novaseq_filter_0_2.rds")
 
@@ -174,7 +177,7 @@ stats=as.data.frame(table(prova_sign$Type))
 stats$distr="events"
 
 
-pdf(file='piechart_event_types_STRINGENT.pdf', paper = 'a4', useDingbats = F)
+pdf(file=paste0(FIG_DIR, 'piechart_event_types_STRINGENT.pdf'), paper = 'a4', useDingbats = F)
 
 ggplot(stats, aes(x = distr, y = Freq, fill =Var1)) +theme_bw()+
   geom_bar(stat="identity", width = 0.7)+theme(axis.text.x = element_text(angle = 90, hjust = 1))+geom_text(aes(label=Freq),position = position_stack(0.6) )+
@@ -195,12 +198,12 @@ dev.off()
 prova_sign$overall.mean = (prova_sign$Psi_A+prova_sign$Psi_B)/2
 prova_sign$class_delta = '<0'
 prova_sign$class_delta[which(sign(prova_sign$DeltaPsi)>0)] = '>0' 
-pdf(file='histogram_colored_DeltaPsi_CIwidth_less_02_STRINGENT.pdf', height = unit(3,'cm'), width = unit(5.5,'cm'), useDingbats = F )
+pdf(file=paste0(FIG_DIR, 'histogram_colored_DeltaPsi_CIwidth_less_02_STRINGENT.pdf'), height = unit(3,'cm'), width = unit(5.5,'cm'), useDingbats = F )
 ggplot(prova_sign,aes(x=overall.mean,color=class_delta))+geom_histogram(alpha=0, position="identity", bins=50)+theme_classic() +
   scale_color_manual(values=c(rgb(18/255,0,124/255),rgb(223/255,0,63/255)))
 dev.off()
 
-pdf(file='histogram_deltaPSI_single_event_types_STRINGENT.pdf', height = unit(8,'cm'), width = unit(6,'cm'), useDingbats = F )
+pdf(file=paste0(FIG_DIR, 'histogram_deltaPSI_single_event_types_STRINGENT.pdf'), height = unit(8,'cm'), width = unit(6,'cm'), useDingbats = F )
 ggplot(prova_sign,aes(x=overall.mean,color=class_delta))+geom_histogram(alpha=0, position="identity", bins=50)+theme_classic() +
   scale_color_manual(values=c(rgb(18/255,0,124/255),rgb(223/255,0,63/255))) + facet_wrap(~ Type, ncol=2)
 dev.off()
@@ -209,29 +212,29 @@ dev.off()
 
 # Boxplots DeltaPsi:
 
-x = melt(prova_sign, measure.vars = c("Psi_B","Psi_A"))
+x = reshape2::melt(prova_sign, measure.vars = c("Psi_B","Psi_A"))
 x$trend=x$overall.mean>0.5  
 library(ggpubr)
-pdf(file='boxplot_meanPSI_single_event_types_CIwidth_less_02_STRINGENT.pdf', height = unit(7,'cm'), width = unit(10,'cm'), useDingbats = F )
+pdf(file=paste0(FIG_DIR, 'boxplot_meanPSI_single_event_types_CIwidth_less_02_STRINGENT.pdf'), height = unit(7,'cm'), width = unit(10,'cm'), useDingbats = F )
 ggplot(x, aes(y=value, x=variable, alpha=0.5, fill=variable))+geom_boxplot(notch=T)+facet_grid(Type~trend, scales = "free")+coord_flip()+theme_test()+
   stat_compare_means(label = "p.signif",label.y = 0.4,label.x = 1.5)
 dev.off()
-pdf(file='boxplot_meanPSI_All_event_types_CIwidth_less_02_STRINGENT.pdf', height = unit(3,'cm'), width = unit(10,'cm'), useDingbats = F )
+pdf(file=paste0(FIG_DIR,'boxplot_meanPSI_All_event_types_CIwidth_less_02_STRINGENT.pdf'), height = unit(3,'cm'), width = unit(10,'cm'), useDingbats = F )
 ggplot(x, aes(y=value, x=variable, alpha=0.5, fill=variable))+geom_boxplot(notch=T)+facet_grid(~trend, scales = "free")+coord_flip()+theme_test()+
   stat_compare_means(label = "p.signif",label.y = 0.4,label.x = 1.5)
 dev.off()
 
-x = melt(prova_sign, measure.vars = c("Psi_B","Psi_A"))
+x = reshape2::melt(prova_sign, measure.vars = c("Psi_B","Psi_A"))
 x$trend=NA
 x$trend[which(x$overall.mean<=0.15)] = 1 # %%%%%%%%%%%%%%%%%%%%%%% 
 x$trend[which(x$overall.mean>0.15 & x$overall.mean<=0.5)] = 2
 x$trend[which(x$overall.mean>0.5 & x$overall.mean<=0.85)] = 3
 x$trend[which(x$overall.mean>0.85)] = 4
-pdf(file='boxplot_meanPSI_single_event_types_4_classes_015_05_085_CIwidth_less_02_STRINGENT.pdf', height = unit(7,'cm'), width = unit(10,'cm'), useDingbats = F )
+pdf(file=paste0(FIG_DIR, 'boxplot_meanPSI_single_event_types_4_classes_015_05_085_CIwidth_less_02_STRINGENT.pdf'), height = unit(7,'cm'), width = unit(10,'cm'), useDingbats = F )
 ggplot(x, aes(y=value, x=variable, alpha=0.5, fill=variable))+geom_boxplot(notch=T,outlier.shape = NA)+facet_grid(Type~trend, scales = "free")+coord_flip()+theme_test()+
   stat_compare_means(label = "p.signif",label.y = (-Inf),label.x = 1.5)
 dev.off()
-pdf(file='boxplot_meanPSI_All_event_types_4_classes_015_05_085_CIwidth_less_02_STRINGENT.pdf', height = unit(3,'cm'), width = unit(10,'cm'), useDingbats = F )
+pdf(file=paste0(FIG_DIR, 'boxplot_meanPSI_All_event_types_4_classes_015_05_085_CIwidth_less_02_STRINGENT.pdf'), height = unit(3,'cm'), width = unit(10,'cm'), useDingbats = F )
 ggplot(x, aes(y=value, x=variable, alpha=0.5, fill=variable))+geom_boxplot(notch=T,outlier.shape = NA)+facet_grid(~trend, scales = "free")+coord_flip()+theme_test()+
   stat_compare_means(label = "p.signif",label.y = (-Inf),label.x = 1.5)
 dev.off()

@@ -7,12 +7,14 @@
 # ******************** Box plots of FLNA exon 30 inclusion with respect to the double stratification FOXA1-SRSF1 ----
 # ******************** ----
 
-
+options(stringsAsFactors=F)
 library(ggplot2)
 library(ggpubr)
 library(plyr)
 library(reshape2)
 library(gridExtra)
+
+FIG_DIR="" # define figure directory
 
 rna <- readRDS("Rdata/RNA_TPM_tumor.rds")
 
@@ -40,11 +42,10 @@ ex$SRSF1_25_75[which(ex$patient%in%subset(rna,SRSF1_25_75=='<=25')$patient)] = '
 ex$FOXA1_SRSF1 = paste0('FOXA1_',ex$FOXA1_25_75,'_SRSF1_',ex$SRSF1_25_75)
 
 my.comparisons=list(c('FOXA1_<=25_SRSF1_<=25','FOXA1_<=25_SRSF1_>=75'),c('FOXA1_<=25_SRSF1_<=25','FOXA1_>=75_SRSF1_>=75'),c('FOXA1_<=25_SRSF1_>=75','FOXA1_>=75_SRSF1_>=75'))
-pdf(file="FLNA_exon_PSI_distribution_double_segr_FOXA1_SRSF1_STRATA_25_75_JITTER.pdf", useDingbats = F, height = unit(7,'cm'), width = unit(6,'cm')) # paper = 'a4r', 
+pdf(paste0(FIG_DIR, file="FLNA_exon_PSI_distribution_double_segr_FOXA1_SRSF1_STRATA_25_75_JITTER.pdf"), useDingbats = F, height = unit(7,'cm'), width = unit(6,'cm')) # paper = 'a4r', 
 ggplot(subset(ex,as_id=='exon_skip_517627' & !FOXA1_25_75=='REST' & !SRSF1_25_75=='REST'),aes(x=FOXA1_SRSF1,y=value))+geom_boxplot(notch = T,outlier.shape = NA)+theme_bw()+
   stat_compare_means(comparisons = my.comparisons)+geom_jitter()
 dev.off()
-
 
 
 
@@ -143,7 +144,7 @@ get_coef = function(f){
   coe
 }
 
-pdf(file=paste0("FLNA_SRP_scaled_glm_coeff.pdf"), height=unit(3,'cm'), width=unit(3, 'cm'), useDingbats = F )
+pdf(paste0(FIG_DIR, file="FLNA_SRP_scaled_glm_coeff.pdf"), height=unit(3,'cm'), width=unit(3, 'cm'), useDingbats = F )
 coe = get_coef(fit$GLM_foxa1HL_patient_srp_scaled)
 dev.off()
 
@@ -153,7 +154,7 @@ boot <- boot.relimp(fit$GLM_foxa1HL_patient_srp_scaled
                     , b = 1000, type = c("lmg"), rank = TRUE, diff = TRUE, rela = TRUE)
 b = booteval.relimp(boot,sort=TRUE) # print result
 
-pdf(file=paste0("RelImpo_glm_FLNA.pdf"), height=unit(5,'cm'), width=unit(5,'cm'), useDingbats = F)
+pdf(paste0(FIG_DIR, file="RelImpo_glm_FLNA.pdf"), height=unit(5,'cm'), width=unit(5,'cm'), useDingbats = F)
 plot(b)
 dev.off()
 
